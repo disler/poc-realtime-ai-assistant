@@ -136,7 +136,6 @@ os.makedirs(scratch_pad_dir, exist_ok=True)
 
 # Define the functions to be called
 @timeit_decorator
-@timeit_decorator
 async def get_current_time():
     return {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 

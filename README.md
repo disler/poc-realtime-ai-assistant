@@ -5,6 +5,7 @@
 
 - Add interruption handling. Current version prevents it for simplicity.
 - Add transcript logging.
+- Make personalization.json an pydantic type.
 - ?Let tools run in parallel.
 
 
