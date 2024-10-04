@@ -10,10 +10,30 @@ import queue
 import logging
 import time
 
+# Add these imports for the functions
+from datetime import datetime
+import random
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+
+# Define the functions to be called
+def get_current_time():
+    return {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+
+def get_random_number():
+    return {"random_number": random.randint(1, 100)}
+
+
+# Map function names to their corresponding functions
+function_map = {
+    "get_current_time": get_current_time,
+    "get_random_number": get_random_number,
+}
 
 
 # Function to log WebSocket events
@@ -48,6 +68,8 @@ class AsyncMicrophone:
     def callback(self, in_data, frame_count, time_info, status):
         if self.is_recording and not self.is_receiving:
             self.queue.put(in_data)
+        # if self.is_recording:
+        #     self.queue.put(in_data)
         return (None, pyaudio.paContinue)
 
     def start_recording(self):
@@ -65,8 +87,6 @@ class AsyncMicrophone:
 
     def stop_receiving(self):
         self.is_receiving = False
-        time.sleep(0.1)  # Small delay before resuming recording
-        self.is_recording = True
         logging.info("Stopped receiving assistant response")
 
     def get_audio_data(self):
@@ -93,6 +113,8 @@ async def realtime_api():
         logging.error("Please set the OPENAI_API_KEY in your .env file.")
         return
 
+    exit_event = asyncio.Event()
+
     url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -104,7 +126,7 @@ async def realtime_api():
     async with websockets.connect(url, extra_headers=headers) as websocket:
         logging.info("Connected to the server.")
 
-        # Initialize the session with voice capabilities
+        # Initialize the session with voice capabilities and tool
         session_update = {
             "type": "session.update",
             "session": {
@@ -119,6 +141,28 @@ async def realtime_api():
                     "prefix_padding_ms": 300,
                     "silence_duration_ms": 200,
                 },
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "get_current_time",
+                        "description": "Returns the current time.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "required": [],
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "name": "get_random_number",
+                        "description": "Returns a random number between 1 and 100.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "required": [],
+                        },
+                    },
+                ],
             },
         }
         log_ws_event("Outgoing", session_update)
@@ -127,6 +171,10 @@ async def realtime_api():
         async def process_ws_messages():
             assistant_reply = ""
             audio_chunks = []
+            response_in_progress = False
+            function_call = None
+            function_call_args = ""
+
             while True:
                 try:
                     message = await websocket.recv()
@@ -135,6 +183,48 @@ async def realtime_api():
 
                     if event["type"] == "response.created":
                         mic.start_receiving()
+                        response_in_progress = True
+                    elif event["type"] == "response.output_item.added":
+                        item = event.get("item", {})
+                        if item.get("type") == "function_call":
+                            function_call = item
+                            function_call_args = ""
+                    elif event["type"] == "response.function_call_arguments.delta":
+                        delta = event.get("delta", "")
+                        function_call_args += delta
+                    elif event["type"] == "response.function_call_arguments.done":
+                        if function_call:
+                            function_name = function_call.get("name")
+                            call_id = function_call.get("call_id")
+                            try:
+                                args = (
+                                    json.loads(function_call_args)
+                                    if function_call_args
+                                    else {}
+                                )
+                            except json.JSONDecodeError:
+                                args = {}
+                            if function_name in function_map:
+                                result = function_map[function_name]()
+                            else:
+                                result = {
+                                    "error": f"Function '{function_name}' not found."
+                                }
+                            function_call_output = {
+                                "type": "conversation.item.create",
+                                "item": {
+                                    "type": "function_call_output",
+                                    "call_id": call_id,
+                                    "output": json.dumps(result),
+                                },
+                            }
+                            log_ws_event("Outgoing", function_call_output)
+                            await websocket.send(json.dumps(function_call_output))
+                            await websocket.send(
+                                json.dumps({"type": "response.create"})
+                            )
+                            function_call = None
+                            function_call_args = ""
                     elif event["type"] == "response.text.delta":
                         assistant_reply += event.get("delta", "")
                         print(
@@ -146,18 +236,26 @@ async def realtime_api():
                         logging.info("Assistant response complete.")
                         if audio_chunks:
                             audio_data = b"".join(audio_chunks)
+                            logging.info(
+                                f"Sending {len(audio_data)} bytes of audio data to play_audio()"
+                            )
                             await play_audio(audio_data)
-                            logging.info(f"Finished play_audio()")
+                            logging.info("Finished play_audio()")
                         assistant_reply = ""
                         audio_chunks = []
-                        logging.info(f"Calling stop_receiving()")
+                        logging.info("Calling stop_receiving()")
                         mic.stop_receiving()
+                    elif event["type"] == "rate_limits.updated":
+                        response_in_progress = False
+                        mic.is_recording = True
+                        logging.info("Resumed recording after rate_limits.updated")
+                        pass
                     elif event["type"] == "error":
                         error_message = event.get("error", {}).get("message", "")
                         logging.error(f"Error: {error_message}")
                         if "buffer is empty" in error_message:
                             logging.info(
-                                "Ignoring empty buffer error and continuing..."
+                                "Received 'buffer is empty' error, no audio data sent."
                             )
                             continue
                         elif (
@@ -165,42 +263,45 @@ async def realtime_api():
                             in error_message
                         ):
                             logging.info(
-                                "Ignoring active response error and continuing..."
+                                "Received 'active response' error, adjusting response flow."
                             )
+                            response_in_progress = True
                             continue
-                        if "buffer is empty" in error_message:
-                            logging.info(
-                                "Ignoring empty buffer error and continuing..."
-                            )
-                            continue
+                        else:
+                            logging.error(f"Unhandled error: {error_message}")
+                            break
                     elif event["type"] == "input_audio_buffer.speech_started":
                         logging.info("Speech detected, listening...")
                     elif event["type"] == "input_audio_buffer.speech_stopped":
                         mic.stop_recording()
                         logging.info("Speech ended, processing...")
-                        # Wait a short time to ensure all audio data has been sent
                         await asyncio.sleep(0.5)
                         await websocket.send(
                             json.dumps({"type": "input_audio_buffer.commit"})
                         )
-                        # Generate a response after committing the audio
-                        await websocket.send(json.dumps({"type": "response.create"}))
+                        if not response_in_progress:
+                            logging.info("Creating a new response")
+                            await websocket.send(
+                                json.dumps({"type": "response.create"})
+                            )
+                        else:
+                            logging.info(
+                                "Response already in progress, not creating a new response"
+                            )
                 except websockets.ConnectionClosed:
                     logging.warning("WebSocket connection closed")
                     break
 
         ws_task = asyncio.create_task(process_ws_messages())
 
-        logging.info("Press Enter to start the ongoing conversation.")
-        await asyncio.get_event_loop().run_in_executor(None, input)
-
         logging.info(
             "Conversation started. Speak freely, and the assistant will respond."
         )
         mic.start_recording()
+        logging.info("Recording started. Listening for speech...")
 
         try:
-            while True:
+            while not exit_event.is_set():
                 await asyncio.sleep(0.1)  # Small delay to accumulate some audio data
                 if not mic.is_receiving:
                     audio_data = mic.get_audio_data()
@@ -220,9 +321,13 @@ async def realtime_api():
         except KeyboardInterrupt:
             logging.info("Keyboard interrupt received. Closing the connection.")
         finally:
+            exit_event.set()
             mic.stop_recording()
             mic.close()
             await websocket.close()
+
+        # Wait for the WebSocket processing task to complete
+        await ws_task
 
 
 async def play_audio(audio_data):
@@ -257,4 +362,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("Press Ctrl+C to exit the program.")
     main()
