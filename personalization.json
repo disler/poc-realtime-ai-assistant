@@ -1,0 +1,15 @@
+{
+  "browser_urls": [
+    "https://aider.chat",
+    "https://simonwillison.net",
+    "https://hackernews.com",
+    "https://chat.openai.com",
+    "https://notebooklm.google.com",
+    "https://google.com",
+    "https://youtube.com",
+    "https://twitter.com",
+    "https://claude.ai/chat",
+    "https://changelog.cursor.com"
+  ],
+  "browser": "chrome"
+}

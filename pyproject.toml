@@ -10,6 +10,7 @@ dependencies = [
     "openai>=1.51.0",
     "pyaudio>=0.2.14",
     "numpy>=2.1.1",
+    "pydantic>=2.9.2",
 ]
 
 [build-system]

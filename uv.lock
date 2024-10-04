@@ -252,6 +252,7 @@ dependencies = [
     { name = "numpy" },
     { name = "openai" },
     { name = "pyaudio" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "websockets" },
 ]
@@ -261,6 +262,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.1.1" },
     { name = "openai", specifier = ">=1.51.0" },
     { name = "pyaudio", specifier = ">=0.2.14" },
+    { name = "pydantic", specifier = ">=2.9.2" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "websockets", specifier = ">=13.1" },
 ]

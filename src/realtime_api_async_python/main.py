@@ -1,4 +1,6 @@
 import asyncio
+import openai
+from pydantic import BaseModel
 import websockets
 import os
 import json
@@ -9,37 +11,153 @@ import numpy as np
 import queue
 import logging
 import time
+import sys
 
 # Add these imports for the functions
 from datetime import datetime
 import random
+import webbrowser
+from concurrent.futures import ThreadPoolExecutor
+
+# Constants for turn detection
+PREFIX_PADDING_MS = 300
+SILENCE_THRESHOLD = 0.5
+SILENCE_DURATION_MS = 400
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03d - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S",
 )
+
+# Load environment variables
+load_dotenv()
+
+# Check for required environment variables
+required_env_vars = ["OPENAI_API_KEY", "PERSONALIZATION_FILE"]
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+    logging.error("Please set these variables in your .env file.")
+    sys.exit(1)
 
 
 # Define the functions to be called
-def get_current_time():
+async def get_current_time():
     return {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 
-def get_random_number():
+async def get_random_number():
     return {"random_number": random.randint(1, 100)}
+
+
+class WebUrl(BaseModel):
+    url: str
+
+
+async def open_browser(prompt: str):
+    """
+    Open a browser tab with the best-fitting URL based on the user's prompt.
+
+    Args:
+        prompt (str): The user's prompt to determine which URL to open.
+    """
+    personalization_file = os.getenv("PERSONALIZATION_FILE", "./personalization.json")
+
+    # Load personalization settings
+    with open(personalization_file, "r") as f:
+        personalization = json.load(f)
+
+    # Extract browser URLs and create a comma-separated string
+    browser_urls = personalization.get("browser_urls", [])
+    browser_urls_str = ", ".join(browser_urls)
+
+    # Extract browser preference
+    browser = personalization.get("browser", "chrome")
+
+    # Build the structured prompt
+    prompt_structure = f"""
+<purpose>
+    Select a browser URL from the list of browser URLs based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Infer the browser URL that the user wants to open from the user-prompt and the list of browser URLs.</instruction>
+    <instruction>If the user-prompt is not related to the browser URLs, return an empty string.</instruction>
+</instructions>
+
+<browser-urls>
+    {browser_urls_str}
+</browser-urls>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+    """
+
+    logging.info(f"📖 open_browser() Prompt: {prompt_structure}")
+
+    # Call the LLM to select the best-fit URL
+    response = structured_output_prompt(prompt_structure, WebUrl)
+
+    logging.info(f"📖 open_browser() Response: {response}")
+
+    # Open the URL if it's not empty
+    if response.url:
+        logging.info(f"📖 open_browser() Opening URL: {response.url}")
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor() as pool:
+            await loop.run_in_executor(
+                pool, webbrowser.get(browser).open, response.url
+            )
+        return {"status": "Browser opened", "url": response.url}
+    else:
+        return {"status": "No URL found"}
 
 
 # Map function names to their corresponding functions
 function_map = {
     "get_current_time": get_current_time,
     "get_random_number": get_random_number,
+    "open_browser": open_browser,
 }
 
 
 # Function to log WebSocket events
 def log_ws_event(direction, event):
     event_type = event.get("type", "Unknown")
-    logging.info(f"realtime_api_ws_events: {direction} - {event_type}")
+    icon = "⬆️  -  Out" if direction == "outgoing" else "⬇️  -  In"
+    logging.info(f"realtime_api_ws_events: {icon} {event_type}")
+
+
+def structured_output_prompt(prompt: str, response_format: BaseModel) -> BaseModel:
+    """
+    Parse the response from the OpenAI API using structured output.
+
+    Args:
+        prompt (str): The prompt to send to the OpenAI API.
+        response_format (BaseModel): The Pydantic model representing the expected response format.
+
+    Returns:
+        BaseModel: The parsed response from the OpenAI API.
+    """
+    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    completion = client.beta.chat.completions.parse(
+        model="gpt-4o-2024-08-06",
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+        response_format=response_format,
+    )
+
+    message = completion.choices[0].message
+
+    if not message.parsed:
+        raise ValueError(message.refusal)
+
+    return message.parsed
 
 
 # Audio recording parameters
@@ -47,6 +165,8 @@ CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 24000
+
+assistant_storage: dict = {}
 
 
 class AsyncMicrophone:
@@ -107,7 +227,6 @@ def base64_encode_audio(audio_bytes):
 
 
 async def realtime_api():
-    load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         logging.error("Please set the OPENAI_API_KEY in your .env file.")
@@ -137,9 +256,9 @@ async def realtime_api():
                 "output_audio_format": "pcm16",
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 200,
+                    "threshold": SILENCE_THRESHOLD,
+                    "prefix_padding_ms": PREFIX_PADDING_MS,
+                    "silence_duration_ms": SILENCE_DURATION_MS,
                 },
                 "tools": [
                     {
@@ -160,6 +279,21 @@ async def realtime_api():
                             "type": "object",
                             "properties": {},
                             "required": [],
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "name": "open_browser",
+                        "description": "Opens a browser tab with the best-fitting URL based on the user's prompt.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "prompt": {
+                                    "type": "string",
+                                    "description": "The user's prompt to determine which URL to open.",
+                                },
+                            },
+                            "required": ["prompt"],
                         },
                     },
                 ],
@@ -200,12 +334,18 @@ async def realtime_api():
                                 args = (
                                     json.loads(function_call_args)
                                     if function_call_args
-                                    else {}
+                                    else None
                                 )
                             except json.JSONDecodeError:
-                                args = {}
+                                args = None
                             if function_name in function_map:
-                                result = function_map[function_name]()
+                                logging.info(
+                                    f"🛠️ Calling function: {function_name} with args: {args}"
+                                )
+                                if args:
+                                    result = await function_map[function_name](**args)
+                                else:
+                                    result = await function_map[function_name]()
                             else:
                                 result = {
                                     "error": f"Function '{function_name}' not found."
