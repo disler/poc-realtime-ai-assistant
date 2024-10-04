@@ -34,13 +34,30 @@ logging.basicConfig(
 # Load environment variables
 load_dotenv()
 
+# Load personalization settings
+personalization_file = os.getenv("PERSONALIZATION_FILE", "./personalization.json")
+with open(personalization_file, "r") as f:
+    personalization = json.load(f)
+
+# Extract names from personalization
+ai_assistant_name = personalization.get("ai_assistant_name", "Assistant")
+human_name = personalization.get("human_name", "User")
+
+# Define session instructions constant
+SESSION_INSTRUCTIONS = f"You are {ai_assistant_name}, a helpful assistant. Respond concisely to {human_name}."
+
 # Check for required environment variables
-required_env_vars = ["OPENAI_API_KEY", "PERSONALIZATION_FILE"]
+required_env_vars = ["OPENAI_API_KEY", "PERSONALIZATION_FILE", "SCRATCH_PAD_DIR"]
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 if missing_vars:
     logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
     logging.error("Please set these variables in your .env file.")
     sys.exit(1)
+
+scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+# Ensure the scratch pad directory exists
+os.makedirs(scratch_pad_dir, exist_ok=True)
 
 
 # Define the functions to be called
@@ -56,6 +73,18 @@ class WebUrl(BaseModel):
     url: str
 
 
+class CreateFileResponse(BaseModel):
+    file_content: str
+    file_name: str
+
+
+class FileSelectionResponse(BaseModel):
+    file: str
+
+class FileUpdateResponse(BaseModel):
+    updates: str
+
+
 async def open_browser(prompt: str):
     """
     Open a browser tab with the best-fitting URL based on the user's prompt.
@@ -63,17 +92,9 @@ async def open_browser(prompt: str):
     Args:
         prompt (str): The user's prompt to determine which URL to open.
     """
-    personalization_file = os.getenv("PERSONALIZATION_FILE", "./personalization.json")
-
-    # Load personalization settings
-    with open(personalization_file, "r") as f:
-        personalization = json.load(f)
-
-    # Extract browser URLs and create a comma-separated string
+    # Use global 'personalization' variable
     browser_urls = personalization.get("browser_urls", [])
     browser_urls_str = ", ".join(browser_urls)
-
-    # Extract browser preference
     browser = personalization.get("browser", "chrome")
 
     # Build the structured prompt
@@ -108,12 +129,139 @@ async def open_browser(prompt: str):
         logging.info(f"📖 open_browser() Opening URL: {response.url}")
         loop = asyncio.get_running_loop()
         with ThreadPoolExecutor() as pool:
-            await loop.run_in_executor(
-                pool, webbrowser.get(browser).open, response.url
-            )
+            await loop.run_in_executor(pool, webbrowser.get(browser).open, response.url)
         return {"status": "Browser opened", "url": response.url}
     else:
         return {"status": "No URL found"}
+
+
+async def create_file(file_name: str, prompt: str) -> dict:
+    """
+    Generate content for a new file based on the user's prompt and the file name.
+    """
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+    # Ensure the scratch pad directory exists
+    os.makedirs(scratch_pad_dir, exist_ok=True)
+
+    # Construct the full file path
+    file_path = os.path.join(scratch_pad_dir, file_name)
+
+    # Check if the file already exists
+    if os.path.exists(file_path):
+        return {"status": "file already exists"}
+
+    # Build the structured prompt
+    prompt_structure = f"""
+<purpose>
+    Generate content for a new file based on the user's prompt and the file name.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the file name, generate content for a new file.</instruction>
+    <instruction>The file name is the name of the file that the user wants to create.</instruction>
+    <instruction>The user's prompt is the prompt that the user wants to use to generate the content for the new file.</instruction>
+</instructions>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+
+<file-name>
+    {file_name}
+</file-name>
+    """
+
+    # Call the LLM to generate the file content
+    response = structured_output_prompt(prompt_structure, CreateFileResponse)
+
+    # Write the generated content to the file
+    with open(file_path, "w") as f:
+        f.write(response.file_content)
+
+    return {"status": "file created", "file_name": response.file_name}
+
+
+async def update_file(prompt: str) -> dict:
+    """
+    Update a file based on the user's prompt.
+    """
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+    # Ensure the scratch pad directory exists
+    os.makedirs(scratch_pad_dir, exist_ok=True)
+
+    # List available files in SCRATCH_PAD_DIR
+    available_files = os.listdir(scratch_pad_dir)
+    available_files_str = ", ".join(available_files)
+
+    # Build the structured prompt to select the file
+    select_file_prompt = f"""
+<purpose>
+    Select a file from the available files based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the list of available files, infer which file the user wants to update.</instruction>
+    <instruction>If no file matches, return an empty string.</instruction>
+</instructions>
+
+<available-files>
+    {available_files_str}
+</available-files>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+    """
+
+    # Call the LLM to select the file
+    file_selection_response = structured_output_prompt(select_file_prompt, FileSelectionResponse)
+
+    # Check if a file was selected
+    if not file_selection_response.file:
+        return {"status": "No matching file found"}
+
+    selected_file = file_selection_response.file
+    file_path = os.path.join(scratch_pad_dir, selected_file)
+
+    # Load the content of the selected file
+    with open(file_path, 'r') as f:
+        file_content = f.read()
+
+    # Build the structured prompt to generate the updates
+    update_file_prompt = f"""
+<purpose>
+    Update the content of the file based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the file content, generate the updated content for the file.</instruction>
+    <instruction>The file-name is the name of the file to update.</instruction>
+    <instruction>The user's prompt describes the updates to make.</instruction>
+</instructions>
+
+<file-name>
+    {selected_file}
+</file-name>
+
+<file-content>
+    {file_content}
+</file-content>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+    """
+
+    # Call the LLM to generate the updates
+    file_update_response = structured_output_prompt(update_file_prompt, FileUpdateResponse)
+
+    # Apply the updates by writing the new content to the file
+    with open(file_path, 'w') as f:
+        f.write(file_update_response.updates)
+
+    return {"status": "File updated", "file_name": selected_file}
 
 
 # Map function names to their corresponding functions
@@ -121,6 +269,8 @@ function_map = {
     "get_current_time": get_current_time,
     "get_random_number": get_random_number,
     "open_browser": open_browser,
+    "create_file": create_file,
+    "update_file": update_file,
 }
 
 
@@ -250,7 +400,7 @@ async def realtime_api():
             "type": "session.update",
             "session": {
                 "modalities": ["text", "audio"],
-                "instructions": "You are a helpful assistant. Respond concisely.",
+                "instructions": SESSION_INSTRUCTIONS,
                 "voice": "alloy",
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
@@ -291,6 +441,40 @@ async def realtime_api():
                                 "prompt": {
                                     "type": "string",
                                     "description": "The user's prompt to determine which URL to open.",
+                                },
+                            },
+                            "required": ["prompt"],
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "name": "create_file",
+                        "description": "Generates content for a new file based on the user's prompt and file name.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file_name": {
+                                    "type": "string",
+                                    "description": "The name of the file to create.",
+                                },
+                                "prompt": {
+                                    "type": "string",
+                                    "description": "The user's prompt to generate the file content.",
+                                },
+                            },
+                            "required": ["file_name", "prompt"],
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "name": "update_file",
+                        "description": "Updates a file based on the user's prompt.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "prompt": {
+                                    "type": "string",
+                                    "description": "The user's prompt describing the updates to the file.",
                                 },
                             },
                             "required": ["prompt"],

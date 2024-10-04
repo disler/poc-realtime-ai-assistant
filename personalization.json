@@ -11,5 +11,7 @@
     "https://claude.ai/chat",
     "https://changelog.cursor.com"
   ],
-  "browser": "chrome"
+  "browser": "chrome",
+  "ai_assistant_name": "Ada",
+  "human_name": "Dan"
 }

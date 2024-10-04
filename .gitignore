@@ -185,3 +185,5 @@ __pycache__/
 apps/marimo-prompt-library/prompt_executions
 
 .env
+
+scratchpad/

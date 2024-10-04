@@ -1,5 +1,12 @@
 # Realtime o1 assistant
 
+## Improvements
+> Up for the challenge? Here are some ideas on how to improve the experience:
+
+- Add interruption handling. Current version prevents it for simplicity.
+- ?Let tools run in parallel.
+
+
 ## Resources
 - https://platform.openai.com/docs/guides/realtime/events
 - https://platform.openai.com/docs/api-reference/realtime-client-events/response-create
