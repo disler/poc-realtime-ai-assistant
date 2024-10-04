@@ -5,6 +5,7 @@ import websockets
 import os
 import json
 import base64
+from typing import Optional
 from dotenv import load_dotenv
 import pyaudio
 import numpy as np
@@ -18,11 +19,28 @@ from datetime import datetime
 import random
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 
 # Constants for turn detection
 PREFIX_PADDING_MS = 300
 SILENCE_THRESHOLD = 0.5
 SILENCE_DURATION_MS = 400
+
+
+class ModelName(str, Enum):
+    state_of_the_art_model = "state_of_the_art_model"
+    reasoning_model = "reasoning_model"
+    base_model = "base_model"
+    fast_model = "fast_model"
+
+
+# Mapping from enum options to model IDs
+model_name_to_id = {
+    ModelName.state_of_the_art_model: "o1-preview",
+    ModelName.reasoning_model: "o1-mini",
+    ModelName.base_model: "gpt-4o-2024-08-06",
+    ModelName.fast_model: "gpt-4o-mini",
+}
 
 # Set up logging
 logging.basicConfig(
@@ -80,9 +98,16 @@ class CreateFileResponse(BaseModel):
 
 class FileSelectionResponse(BaseModel):
     file: str
+    model: ModelName = ModelName.base_model
+
 
 class FileUpdateResponse(BaseModel):
     updates: str
+
+
+class FileDeleteResponse(BaseModel):
+    file: str
+    force_delete: bool
 
 
 async def open_browser(prompt: str):
@@ -182,7 +207,71 @@ async def create_file(file_name: str, prompt: str) -> dict:
     return {"status": "file created", "file_name": response.file_name}
 
 
-async def update_file(prompt: str) -> dict:
+async def delete_file(prompt: str, force_delete: bool = False) -> dict:
+    """
+    Delete a file based on the user's prompt.
+    """
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+    # Ensure the scratch pad directory exists
+    os.makedirs(scratch_pad_dir, exist_ok=True)
+
+    # List available files in SCRATCH_PAD_DIR
+    available_files = os.listdir(scratch_pad_dir)
+    available_files_str = ", ".join(available_files)
+
+    # Build the structured prompt to select the file and determine 'force_delete' status
+    select_file_prompt = f"""
+    <purpose>
+        Select a file from the available files to delete.
+    </purpose>
+
+    <instructions>
+        <instruction>Based on the user's prompt and the list of available files, infer which file the user wants to delete.</instruction>
+        <instruction>If no file matches, return an empty string for 'file'.</instruction>
+    </instructions>
+
+    <available-files>
+        {available_files_str}
+    </available-files>
+
+    <user-prompt>
+        {prompt}
+    </user-prompt>
+    """
+
+    # Call the LLM to select the file and determine 'force_delete'
+    file_delete_response = structured_output_prompt(
+        select_file_prompt, FileDeleteResponse
+    )
+
+    # Check if a file was selected
+    if not file_delete_response.file:
+        return {"status": "No matching file found"}
+
+    selected_file = file_delete_response.file
+
+    file_path = os.path.join(scratch_pad_dir, selected_file)
+
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        return {"status": "File does not exist", "file_name": selected_file}
+
+    # If 'force_delete' is False, prompt for confirmation
+    if not force_delete:
+        # Return a message indicating that confirmation is required
+        return {
+            "status": "Confirmation required",
+            "file_name": selected_file,
+            "message": f"Are you sure you want to delete '{selected_file}'? Say force delete if you want to delete.",
+        }
+
+    # Proceed to delete the file
+    os.remove(file_path)
+    return {"status": "File deleted", "file_name": selected_file}
+
+
+async def update_file(prompt: str, model: ModelName = ModelName.base_model) -> dict:
     """
     Update a file based on the user's prompt.
     """
@@ -195,38 +284,56 @@ async def update_file(prompt: str) -> dict:
     available_files = os.listdir(scratch_pad_dir)
     available_files_str = ", ".join(available_files)
 
-    # Build the structured prompt to select the file
+    # Prepare the available models mapping as JSON
+    available_model_map = json.dumps(
+        {model.value: model_name_to_id[model] for model in ModelName}
+    )
+
+    # Build the structured prompt to select the file and model
     select_file_prompt = f"""
 <purpose>
-    Select a file from the available files based on the user's prompt.
+    Select a file from the available files and choose the appropriate model based on the user's prompt.
 </purpose>
 
 <instructions>
     <instruction>Based on the user's prompt and the list of available files, infer which file the user wants to update.</instruction>
-    <instruction>If no file matches, return an empty string.</instruction>
+    <instruction>Also, select the most appropriate model from the available models mapping.</instruction>
+    <instruction>If the user does not specify a model, default to 'base_model'.</instruction>
+    <instruction>If no file matches, return an empty string for 'file'.</instruction>
 </instructions>
 
 <available-files>
     {available_files_str}
 </available-files>
 
+<available-model-map>
+    {available_model_map}
+</available-model-map>
+
 <user-prompt>
     {prompt}
 </user-prompt>
-    """
+"""
 
-    # Call the LLM to select the file
-    file_selection_response = structured_output_prompt(select_file_prompt, FileSelectionResponse)
+    # Call the LLM to select the file and model
+    file_selection_response = structured_output_prompt(
+        select_file_prompt, FileSelectionResponse
+    )
 
     # Check if a file was selected
     if not file_selection_response.file:
         return {"status": "No matching file found"}
 
     selected_file = file_selection_response.file
+    selected_model_key = file_selection_response.model
+    selected_model = model_name_to_id.get(
+        selected_model_key, model_name_to_id[ModelName.base_model]
+    )
+
     file_path = os.path.join(scratch_pad_dir, selected_file)
 
     # Load the content of the selected file
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         file_content = f.read()
 
     # Build the structured prompt to generate the updates
@@ -239,6 +346,9 @@ async def update_file(prompt: str) -> dict:
     <instruction>Based on the user's prompt and the file content, generate the updated content for the file.</instruction>
     <instruction>The file-name is the name of the file to update.</instruction>
     <instruction>The user's prompt describes the updates to make.</instruction>
+    <instruction>Respond exclusively with the updates to the file and nothing else; they will be used to overwrite the file entirely using f.write().</instruction>
+    <instruction>Do not include any preamble or commentary or markdown formatting, just the raw updates.</instruction>
+    <instruction>Be precise and accurate.</instruction>
 </instructions>
 
 <file-name>
@@ -252,16 +362,20 @@ async def update_file(prompt: str) -> dict:
 <user-prompt>
     {prompt}
 </user-prompt>
-    """
+"""
 
-    # Call the LLM to generate the updates
-    file_update_response = structured_output_prompt(update_file_prompt, FileUpdateResponse)
+    # Call the LLM to generate the updates using the selected model
+    file_update_response = chat_prompt(update_file_prompt, selected_model)
 
     # Apply the updates by writing the new content to the file
-    with open(file_path, 'w') as f:
-        f.write(file_update_response.updates)
+    with open(file_path, "w") as f:
+        f.write(file_update_response)
 
-    return {"status": "File updated", "file_name": selected_file}
+    return {
+        "status": "File updated",
+        "file_name": selected_file,
+        "model_used": selected_model_key,
+    }
 
 
 # Map function names to their corresponding functions
@@ -271,6 +385,7 @@ function_map = {
     "open_browser": open_browser,
     "create_file": create_file,
     "update_file": update_file,
+    "delete_file": delete_file,
 }
 
 
@@ -308,6 +423,31 @@ def structured_output_prompt(prompt: str, response_format: BaseModel) -> BaseMod
         raise ValueError(message.refusal)
 
     return message.parsed
+
+
+def chat_prompt(prompt: str, model: str) -> str:
+    """
+    Run a chat model based on the specified model name.
+
+    Args:
+        prompt (str): The prompt to send to the OpenAI API.
+        model (str): The model ID to use for the API call.
+
+    Returns:
+        str: The assistant's response.
+    """
+    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    completion = client.beta.chat.completions.parse(
+        model=model,
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+    )
+
+    message = completion.choices[0].message
+
+    return message.content
 
 
 # Audio recording parameters
@@ -476,6 +616,35 @@ async def realtime_api():
                                     "type": "string",
                                     "description": "The user's prompt describing the updates to the file.",
                                 },
+                                "model": {
+                                    "type": "string",
+                                    "enum": [
+                                        "state_of_the_art_model",
+                                        "reasoning_model",
+                                        "base_model",
+                                        "fast_model",
+                                    ],
+                                    "description": "The model to use for generating the updates. Default to 'base_model' if not specified.",
+                                },
+                            },
+                            "required": ["prompt"],  # 'model' is optional
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "name": "delete_file",
+                        "description": "Deletes a file based on the user's prompt.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "prompt": {
+                                    "type": "string",
+                                    "description": "The user's prompt describing the file to delete.",
+                                },
+                                "force_delete": {
+                                    "type": "boolean",
+                                    "description": "Whether to force delete the file without confirmation. Default to 'false' if not specified.",
+                                },
                             },
                             "required": ["prompt"],
                         },
@@ -530,6 +699,7 @@ async def realtime_api():
                                     result = await function_map[function_name](**args)
                                 else:
                                     result = await function_map[function_name]()
+                                logging.info(f"🛠️ Function call result: {result}")
                             else:
                                 result = {
                                     "error": f"Function '{function_name}' not found."
@@ -549,6 +719,7 @@ async def realtime_api():
                             )
                             function_call = None
                             function_call_args = ""
+
                     elif event["type"] == "response.text.delta":
                         assistant_reply += event.get("delta", "")
                         print(
@@ -603,15 +774,7 @@ async def realtime_api():
                         await websocket.send(
                             json.dumps({"type": "input_audio_buffer.commit"})
                         )
-                        if not response_in_progress:
-                            logging.info("Creating a new response")
-                            await websocket.send(
-                                json.dumps({"type": "response.create"})
-                            )
-                        else:
-                            logging.info(
-                                "Response already in progress, not creating a new response"
-                            )
+
                 except websockets.ConnectionClosed:
                     logging.warning("WebSocket connection closed")
                     break
