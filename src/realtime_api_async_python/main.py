@@ -454,7 +454,7 @@ function_map = {
 # Function to log WebSocket events
 def log_ws_event(direction, event):
     event_type = event.get("type", "Unknown")
-    icon = "⬆️  -  Out" if direction == "outgoing" else "⬇️  -  In"
+    icon = "⬆️  - Out" if direction == "outgoing" else "⬇️  - In"
     logging.info(f"realtime_api_ws_events: {icon} {event_type}")
 
 
