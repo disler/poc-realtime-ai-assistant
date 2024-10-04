@@ -14,6 +14,7 @@ import queue
 import logging
 import time
 import sys
+from datetime import datetime
 
 # Add these imports for the functions
 from datetime import datetime
@@ -578,6 +579,20 @@ def base64_encode_audio(audio_bytes):
     return base64.b64encode(audio_bytes).decode("utf-8")
 
 
+def log_runtime(function_or_name: str, duration: float):
+    jsonl_file = RUN_TIME_TABLE_LOG_JSON
+    time_record = {
+        "timestamp": datetime.now().isoformat(),
+        "function": function_or_name,
+        "duration": f"{duration:.4f}",
+    }
+    with open(jsonl_file, "a") as file:
+        json.dump(time_record, file)
+        file.write("\n")
+
+    logging.info(f"⏰ {function_or_name}() took {duration:.4f} seconds")
+
+
 async def realtime_api():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -723,6 +738,7 @@ async def realtime_api():
             response_in_progress = False
             function_call = None
             function_call_args = ""
+            response_start_time = None
 
             while True:
                 try:
@@ -790,6 +806,12 @@ async def realtime_api():
                     elif event["type"] == "response.audio.delta":
                         audio_chunks.append(base64.b64decode(event["delta"]))
                     elif event["type"] == "response.done":
+                        if response_start_time is not None:
+                            response_end_time = time.perf_counter()
+                            response_duration = response_end_time - response_start_time
+                            log_runtime("realtime_api_response", response_duration)
+                            response_start_time = None
+
                         logging.info("Assistant response complete.")
                         if audio_chunks:
                             audio_data = b"".join(audio_chunks)
@@ -832,7 +854,10 @@ async def realtime_api():
                     elif event["type"] == "input_audio_buffer.speech_stopped":
                         mic.stop_recording()
                         logging.info("Speech ended, processing...")
-                        await asyncio.sleep(0.5)
+                        # await asyncio.sleep(0.5)
+
+                        # start the response timer, on send
+                        response_start_time = time.perf_counter()
                         await websocket.send(
                             json.dumps({"type": "input_audio_buffer.commit"})
                         )

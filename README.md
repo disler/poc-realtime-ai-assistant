@@ -4,6 +4,7 @@
 > Up for the challenge? Here are some ideas on how to improve the experience:
 
 - Add interruption handling. Current version prevents it for simplicity.
+- Add transcript logging.
 - ?Let tools run in parallel.
 
 
