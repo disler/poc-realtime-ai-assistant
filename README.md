@@ -6,6 +6,7 @@
 - Add interruption handling. Current version prevents it for simplicity.
 - Add transcript logging.
 - Make personalization.json an pydantic type.
+- ?Fix play_audio() silence appending issue.
 - ?Let tools run in parallel.
 
 
