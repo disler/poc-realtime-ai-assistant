@@ -1,0 +1,22 @@
+[project]
+name = "realtime-api-async-python"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "websockets>=13.1",
+    "python-dotenv>=1.0.1",
+    "openai>=1.51.0",
+    "pyaudio>=0.2.14",
+    "numpy>=2.1.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+
+[project.scripts]
+main = "realtime_api_async_python.main:main"
