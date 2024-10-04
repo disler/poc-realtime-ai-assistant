@@ -5,7 +5,6 @@
 
 - Add interruption handling. Current version prevents it for simplicity.
 - ?Let tools run in parallel.
-- Remove duplicate response bug. (Not sure if this is the api or a bug in the code)
 
 
 ## Resources

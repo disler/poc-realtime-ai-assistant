@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import openai
 from pydantic import BaseModel
 import websockets
@@ -25,6 +26,60 @@ from enum import Enum
 PREFIX_PADDING_MS = 300
 SILENCE_THRESHOLD = 0.5
 SILENCE_DURATION_MS = 400
+
+RUN_TIME_TABLE_LOG_JSON = "runtime_time_table.jsonl"
+
+
+def timeit_decorator(func):
+    @functools.wraps(func)
+    async def async_wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = await func(*args, **kwargs)
+        end_time = time.perf_counter()
+        duration = round(end_time - start_time, 4)
+        print(f"⏰ {func.__name__}() took {duration:.4f} seconds")
+
+        jsonl_file = RUN_TIME_TABLE_LOG_JSON
+
+        # Create new time record
+        time_record = {
+            "timestamp": datetime.now().isoformat(),
+            "function": func.__name__,
+            "duration": f"{duration:.4f}",
+        }
+
+        # Append the new record to the JSONL file
+        with open(jsonl_file, "a") as file:
+            json.dump(time_record, file)
+            file.write("\n")
+
+        return result
+
+    @functools.wraps(func)
+    def sync_wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        duration = round(end_time - start_time, 4)
+        print(f"⏰ {func.__name__}() took {duration:.4f} seconds")
+
+        jsonl_file = RUN_TIME_TABLE_LOG_JSON
+
+        # Create new time record
+        time_record = {
+            "timestamp": datetime.now().isoformat(),
+            "function": func.__name__,
+            "duration": f"{duration:.4f}",
+        }
+
+        # Append the new record to the JSONL file
+        with open(jsonl_file, "a") as file:
+            json.dump(time_record, file)
+            file.write("\n")
+
+        return result
+
+    return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
 
 
 class ModelName(str, Enum):
@@ -79,10 +134,13 @@ os.makedirs(scratch_pad_dir, exist_ok=True)
 
 
 # Define the functions to be called
+@timeit_decorator
+@timeit_decorator
 async def get_current_time():
     return {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 
+@timeit_decorator
 async def get_random_number():
     return {"random_number": random.randint(1, 100)}
 
@@ -110,6 +168,7 @@ class FileDeleteResponse(BaseModel):
     force_delete: bool
 
 
+@timeit_decorator
 async def open_browser(prompt: str):
     """
     Open a browser tab with the best-fitting URL based on the user's prompt.
@@ -160,6 +219,7 @@ async def open_browser(prompt: str):
         return {"status": "No URL found"}
 
 
+@timeit_decorator
 async def create_file(file_name: str, prompt: str) -> dict:
     """
     Generate content for a new file based on the user's prompt and the file name.
@@ -207,6 +267,7 @@ async def create_file(file_name: str, prompt: str) -> dict:
     return {"status": "file created", "file_name": response.file_name}
 
 
+@timeit_decorator
 async def delete_file(prompt: str, force_delete: bool = False) -> dict:
     """
     Delete a file based on the user's prompt.
@@ -247,30 +308,30 @@ async def delete_file(prompt: str, force_delete: bool = False) -> dict:
 
     # Check if a file was selected
     if not file_delete_response.file:
-        return {"status": "No matching file found"}
+        result = {"status": "No matching file found"}
+    else:
+        selected_file = file_delete_response.file
+        file_path = os.path.join(scratch_pad_dir, selected_file)
 
-    selected_file = file_delete_response.file
+        # Check if the file exists
+        if not os.path.exists(file_path):
+            result = {"status": "File does not exist", "file_name": selected_file}
+        # If 'force_delete' is False, prompt for confirmation
+        elif not force_delete:
+            result = {
+                "status": "Confirmation required",
+                "file_name": selected_file,
+                "message": f"Are you sure you want to delete '{selected_file}'? Say force delete if you want to delete.",
+            }
+        else:
+            # Proceed to delete the file
+            os.remove(file_path)
+            result = {"status": "File deleted", "file_name": selected_file}
 
-    file_path = os.path.join(scratch_pad_dir, selected_file)
-
-    # Check if the file exists
-    if not os.path.exists(file_path):
-        return {"status": "File does not exist", "file_name": selected_file}
-
-    # If 'force_delete' is False, prompt for confirmation
-    if not force_delete:
-        # Return a message indicating that confirmation is required
-        return {
-            "status": "Confirmation required",
-            "file_name": selected_file,
-            "message": f"Are you sure you want to delete '{selected_file}'? Say force delete if you want to delete.",
-        }
-
-    # Proceed to delete the file
-    os.remove(file_path)
-    return {"status": "File deleted", "file_name": selected_file}
+    return result
 
 
+@timeit_decorator
 async def update_file(prompt: str, model: ModelName = ModelName.base_model) -> dict:
     """
     Update a file based on the user's prompt.
@@ -456,6 +517,7 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 24000
 
+# big ideas here, really, this should be db calls. More on this later.
 assistant_storage: dict = {}
 
 
