@@ -189,3 +189,5 @@ apps/marimo-prompt-library/prompt_executions
 scratchpad/
 
 runtime_time_table.jsonl
+
+bup/

@@ -13,7 +13,7 @@
     "https://gemini.google.com/u/1/",
     "https://openai.com/index/introducing-the-realtime-api/"
   ],
-  "browser": "chrome",
+  "browser_command": "open -a 'Google Chrome'",
   "ai_assistant_name": "Ada",
   "human_name": "Dan"
 }

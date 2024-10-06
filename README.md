@@ -1,7 +1,13 @@
 # POC Python Realtime API o1 assistant
 > This is a proof of concept for using the OpenAI's [Realtime API](https://openai.com/index/introducing-the-realtime-api/) to chain tools, call o1-preview & o1-mini, [structure output](https://openai.com/index/introducing-structured-outputs-in-the-api/) responses, and glimpse into the future of **AI assistant powered engineering**.
 >
-> See video where we [use this POC](https://youtu.be/vN0t-kcPOXo)
+> See video where we [use and discuss this POC](https://youtu.be/vN0t-kcPOXo)
+>
+> See video where we [add memory and tools to the assistant](https://youtu.be/090oR--s__8)
+>
+> This codebase is a v0.2, poc. It's buggy, but contains the core ideas for realtime personal ai assistants & AI Agents.
+
+<img src="./images/engineers-ai-assistant.png" alt="engineers-ai-assistant" style="max-width: 800px;">
 
 <img src="./images/ada-is-back.png" alt="realtime-assistant" style="max-width: 800px;">
 
@@ -10,55 +16,95 @@
 - Setup environment `cp .env.sample .env` add your `OPENAI_API_KEY`
 - Update `personalization.json` to fit your setup
 - Install dependencies `uv sync`
-- Run the realtime assistant `uv run main`
+- Run the realtime assistant `uv run main` or `uv run main --prompts "Hello, how are you?|What time is it?|Open Hacker News"`
+
+## Assistant Tools
+The assistant is equipped with the following tools:
+
+### Utility Functions
+- `get_current_time`: Returns the current time.
+- `get_random_number`: Returns a random number between 1 and 100.
+- `open_browser`: Opens a browser tab with the best-fitting URL based on the user's prompt.
+- `generate_diagram`: Generates mermaid diagrams based on the user's prompt.
+- `runnable_code_check`: Checks if the code in the specified file is runnable and provides necessary changes if not.
+- `run_python`: Executes a Python script from the `scratch_pad_dir` based on the user's prompt and returns the output.
+
+### Browser and File Operations
+- `create_file`: Generates content for a new file based on the user's prompt and file name.
+- `update_file`: Updates a file based on the user's prompt.
+- `delete_file`: Deletes a file based on the user's prompt.
+- `discuss_file`: Discusses a file's content based on the user's prompt, considering the current memory content.
+- `read_file_into_memory`: Reads a file from the scratch_pad_dir and saves its content into memory based on the user's prompt.
+- `read_dir_into_memory`: Reads all files from the scratch_pad_dir and saves their content into memory.
+
+### Memory Management
+- `clipboard_to_memory`: Copies the content from the clipboard to memory.
+- `add_to_memory`: Adds a key-value pair to memory.
+- `remove_variable_from_memory`: Removes a variable from memory based on the user's prompt.
+- `reset_active_memory`: Resets the active memory to an empty dictionary.
+
+### Information Sourcing
+- `scrap_to_file_from_clipboard`: Gets a URL from the clipboard, scrapes its content, and saves it to a file in the scratch_pad_dir.
 
 ## Try This
 
+### Voice Commands
 Here are some voice commands you can try with the assistant:
 
-1. "Hey Ada, how are you?"
-2. "What's the current time?"
-3. "Generate a random number."
-4. "Open ChatGPT, Claude, and Hacker News."
-5. "Create a new CSV file called user analytics with 10 mock rows."
-6. "Update the user analytics file, add 20 additional mock rows, use a reasoning model."
+- "Hey Ada, how are you?"
+- "What's the current time?"
+- "Generate a random number."
+- "Open ChatGPT, Claude, and Hacker News."
+- "Create a new CSV file called user analytics with 10 mock rows."
+- "Update the user analytics file, add 20 additional mock rows, use a reasoning model."
+- "Get the current time, then add the current time to memory with the key 'current_time'."
+- "Hey Ada, generate a diagram outlining the architecture of a minimal tiktok clone."
+- "Hey Ada, check if `example.py` is runnable."
+- "Hey Ada, run `example.py`."
+
+### CLI Text Prompts
+You can also pass text prompts to the assistant via the CLI.
+Use '|' to separate prompts to chain commands.
+
+- `uv run main --prompts "Hello, how are you?"`
+- `uv run main --prompts "Open Hacker News"`
+- `uv run main --prompts "Hey Ada!|What time is it?|Open Hacker News|Open Simon Willison blog|Open Aider"`
+- `uv run main --prompts "copy my current clipboard to memory"`
+- `uv run main --prompts "copy my current clipboard to memory with the key 'url'"`
+- `uv run main --prompts "call remove_variable_from_memory to delete the clipboard_content variable from active memory"`
+- `uv run main --prompts "Create a new CSV file called user analytics with 10 mock rows."`
+- `uv run main --prompts "read file user analytics into memory"`
+- `uv run main --prompts "reset active memory"`
+- `uv run main --prompts "add to memory the key 'project_status' with the value 'in progress'"`
+- `uv run main --prompts "read all files in the scratch pad directory into memory"`
+- `uv run main --prompts "scrape the URL from my clipboard and save it to a file"`
+- `uv run main --prompts "ada update the openai_structured_outputs file. clean it up and focus on the coding examples and the key usecases of structured outputs. use a fast model"`
+- `uv run main --prompts "Generate a diagram outlining the architecture of a minimal tiktok clone"`
+- `uv run main --prompts "Check if example.py is runnable code"`
+- `uv run main --prompts "Run example.py"`
 
 ## Code Breakdown
 
-### Main Script (`main.py`)
-The `main.py` script serves as the entry point for the application. It sets up the WebSocket connection, handles audio input/output, and manages the interaction between the user and the AI assistant.
+### Code Organization
+The codebase is organized within the `src/realtime_api_async_python` directory. The application is modularized, with core functionality divided into separate Python modules located in the `modules/` directory. Tests are located in the `tests/` directory, providing a starting point for testing the application's components.
 
-### Environment and Personalization Setup
-The application uses environment variables (loaded from a `.env` file) and a `personalization.json` file to customize the assistant's behavior and store API keys.
+### Important Files and Directories
+- **`main.py`**: This is the entry point of the application. It sets up the WebSocket connection, handles audio input/output, and manages the interaction between the user and the AI assistant.
+- **`modules/` Directory**: Contains various modules handling different functionalities of the assistant:
+  - `audio.py`: Handles audio playback.
+  - `async_microphone.py`: Manages asynchronous audio input.
+  - `llm.py`: Interfaces with language models.
+  - `tools.py`: Contains definitions of tools that the assistant can use.
+  - `utils.py`: Provides utility functions used across the application.
+  - `memory_management.py`: Manages the assistant's memory.
+- **`tests/` Directory**: Contains minimal tests for the application's modules.
+- **`active_memory.json`**: Stores the assistant's active memory state, allowing it to persist information between interactions.
 
-### Function Definitions
-Several functions are defined to handle various tasks:
-- `get_current_time()`: Returns the current time.
-- `get_random_number()`: Generates a random number between 1 and 100.
-- `open_browser()`: Opens specified URLs in the browser.
-- `create_file()`: Creates a new file with generated content.
-- `update_file()`: Updates an existing file's content.
-- `delete_file()`: Deletes a specified file.
+### Memory Management
+The assistant uses the `MemoryManager` class in `memory_management.py` to handle memory operations. This class provides methods to create, read, update, delete, and list memory entries. Memory is stored persistently in `active_memory.json`, enabling the assistant to access and manipulate memory across sessions.
 
-These functions can be called by the AI assistant to perform actions based on user requests.
-
-### AsyncMicrophone Class
-The `AsyncMicrophone` class manages asynchronous audio input, allowing for real-time speech capture and processing.
-
-### WebSocket Connection and Event Handling
-The application establishes a WebSocket connection with the OpenAI Realtime API. It handles various events such as `response.created`, `response.done`, and function calls, enabling real-time interaction with the AI assistant.
-
-### Audio Processing
-Audio data is captured, encoded in base64, and sent over the WebSocket. The `play_audio()` function handles playback of the assistant's audio responses.
-
-### Runtime Logging and Decorators
-The `timeit_decorator` is used to log execution times of functions. Runtime information is logged to `runtime_time_table.jsonl` for performance analysis.
-
-### Entry Point (`main()` Function)
-The `main()` function initializes the application, sets up the WebSocket connection, and manages the main event loop for user interaction.
-
-### Additional Resources and Utilities
-The codebase includes various utility functions for tasks such as structured output prompts, chat prompts, and audio encoding/decoding.
+### Tools Framework
+Tools are functions defined in `modules/tools.py` that extend the assistant's capabilities. These tools are mapped in `function_map` and are available for the assistant to perform actions based on user requests. The assistant uses these tools to execute specific tasks, enhancing its functionality and allowing for dynamic interactions.
 
 ## Improvements
 > Up for a challenge? Here are some ideas on how to improve the experience:
@@ -70,6 +116,8 @@ The codebase includes various utility functions for tasks such as structured out
 - Fix audio randomly cutting out near the end.
 
 ## Resources
+- https://youtu.be/vN0t-kcPOXo
+- https://youtu.be/090oR--s__8
 - https://openai.com/index/introducing-the-realtime-api/
 - https://openai.com/index/introducing-structured-outputs-in-the-api/
 - https://platform.openai.com/docs/guides/realtime/events
@@ -77,3 +125,4 @@ The codebase includes various utility functions for tasks such as structured out
 - https://platform.openai.com/playground/realtime
 - https://github.com/Azure-Samples/aoai-realtime-audio-sdk/blob/main/README.md
 - https://docs.astral.sh/uv/
+- https://docs.astral.sh/uv/guides/scripts/#running-a-script-with-dependencies
