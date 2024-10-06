@@ -65,6 +65,7 @@ The codebase includes various utility functions for tasks such as structured out
 ## Improvements
 > Up for a challenge? Here are some ideas on how to improve the experience:
 
+- Organize code.
 - Add interruption handling. Current version prevents it for simplicity.
 - Add transcript logging.
 - Make personalization.json a pydantic type.
