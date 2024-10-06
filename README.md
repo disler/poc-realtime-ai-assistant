@@ -1,7 +1,9 @@
 # POC Python Realtime API o1 assistant
 > This is a proof of concept for using the OpenAI's [Realtime API](https://openai.com/index/introducing-the-realtime-api/) to chain tools, call o1-preview & o1-mini, [structure output](https://openai.com/index/introducing-structured-outputs-in-the-api/) responses, and glimpse into the future of **AI assistant powered engineering**.
 >
-> See video where we [use this POC](https://youtu.be/vN0t-kcPOXo)
+> See video where we [use and discuss this POC](https://youtu.be/vN0t-kcPOXo)
+>
+> This codebase is a v0, poc. It's buggy, but contains the core ideas for realtime personal ai assistants & AI Agents.
 
 <img src="./images/ada-is-back.png" alt="realtime-assistant" style="max-width: 800px;">
 
