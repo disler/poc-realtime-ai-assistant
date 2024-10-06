@@ -10,7 +10,8 @@
     "https://twitter.com",
     "https://claude.ai/chat",
     "https://changelog.cursor.com",
-    "https://gemini.google.com/u/1/"
+    "https://gemini.google.com/u/1/",
+    "https://openai.com/index/introducing-the-realtime-api/"
   ],
   "browser": "chrome",
   "ai_assistant_name": "Ada",
