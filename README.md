@@ -1,5 +1,5 @@
 # POC Python Realtime API o1 assistant
-> This is a proof of concept for using the OpenAI Python Realtime API to chain tools, call o1, and taste the future of **AI assistant powered engineering**.
+> This is a proof of concept for using the OpenAI's [Realtime API](https://openai.com/index/introducing-the-realtime-api/) to chain tools, call o1, and taste the future of **AI assistant powered engineering**.
 >
 > See video where we [use this POC](https://youtu.be/vN0t-kcPOXo)
 
@@ -70,7 +70,9 @@ The codebase includes various utility functions for tasks such as structured out
 - Fix audio randomly cutting out near the end.
 
 ## Resources
+- https://openai.com/index/introducing-the-realtime-api/
 - https://platform.openai.com/docs/guides/realtime/events
 - https://platform.openai.com/docs/api-reference/realtime-client-events/response-create
 - https://platform.openai.com/playground/realtime
 - https://github.com/Azure-Samples/aoai-realtime-audio-sdk/blob/main/README.md
+- https://docs.astral.sh/uv/
