@@ -1,0 +1,17 @@
+{
+  "browser_urls": [
+    "https://aider.chat",
+    "https://simonwillison.net",
+    "https://hackernews.com",
+    "https://chat.openai.com",
+    "https://notebooklm.google.com",
+    "https://google.com",
+    "https://youtube.com",
+    "https://twitter.com",
+    "https://claude.ai/chat",
+    "https://changelog.cursor.com",
+    "https://gemini.google.com/u/1/",
+    "https://openai.com/index/introducing-the-realtime-api/"
+  ],
+  "browser": "open -a /Applications/Google\\ Chrome.app %s"
+}
