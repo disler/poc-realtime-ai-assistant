@@ -12,13 +12,15 @@ from dotenv import load_dotenv
 import pyaudio
 import numpy as np
 import queue
-import logging
 import time
 import sys
 from datetime import datetime
 
+from .utils.timeit_decorator import timeit_decorator
+from .utils.encode_audio import encode_audio
+from .utils.logging import logging, log_ws_event, log_runtime
+
 # Add these imports for the functions
-from datetime import datetime
 import random
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
@@ -28,60 +30,7 @@ from enum import Enum
 PREFIX_PADDING_MS = 300
 SILENCE_THRESHOLD = 0.5
 SILENCE_DURATION_MS = 400
-
 RUN_TIME_TABLE_LOG_JSON = "runtime_time_table.jsonl"
-
-
-def timeit_decorator(func):
-    @functools.wraps(func)
-    async def async_wrapper(*args, **kwargs):
-        start_time = time.perf_counter()
-        result = await func(*args, **kwargs)
-        end_time = time.perf_counter()
-        duration = round(end_time - start_time, 4)
-        print(f"⏰ {func.__name__}() took {duration:.4f} seconds")
-
-        jsonl_file = RUN_TIME_TABLE_LOG_JSON
-
-        # Create new time record
-        time_record = {
-            "timestamp": datetime.now().isoformat(),
-            "function": func.__name__,
-            "duration": f"{duration:.4f}",
-        }
-
-        # Append the new record to the JSONL file
-        with open(jsonl_file, "a") as file:
-            json.dump(time_record, file)
-            file.write("\n")
-
-        return result
-
-    @functools.wraps(func)
-    def sync_wrapper(*args, **kwargs):
-        start_time = time.perf_counter()
-        result = func(*args, **kwargs)
-        end_time = time.perf_counter()
-        duration = round(end_time - start_time, 4)
-        print(f"⏰ {func.__name__}() took {duration:.4f} seconds")
-
-        jsonl_file = RUN_TIME_TABLE_LOG_JSON
-
-        # Create new time record
-        time_record = {
-            "timestamp": datetime.now().isoformat(),
-            "function": func.__name__,
-            "duration": f"{duration:.4f}",
-        }
-
-        # Append the new record to the JSONL file
-        with open(jsonl_file, "a") as file:
-            json.dump(time_record, file)
-            file.write("\n")
-
-        return result
-
-    return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
 
 
 class ModelName(str, Enum):
@@ -98,13 +47,6 @@ model_name_to_id = {
     ModelName.base_model: "gpt-4o-2024-08-06",
     ModelName.fast_model: "gpt-4o-mini",
 }
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s.%(msecs)03d - %(levelname)s - %(message)s",
-    datefmt="%H:%M:%S",
-)
 
 # Load environment variables
 load_dotenv()
@@ -451,45 +393,7 @@ function_map = {
 }
 
 
-# Function to log WebSocket events
-def log_ws_event(direction, event):
-    event_type = event.get("type", "Unknown")
-    event_emojis = {
-        "session.update": "🛠️",
-        "session.created": "🔌",
-        "session.updated": "🔄",
-        "input_audio_buffer.append": "🎤",
-        "input_audio_buffer.commit": "✅",
-        "input_audio_buffer.speech_started": "🗣️",
-        "input_audio_buffer.speech_stopped": "🤫",
-        "input_audio_buffer.cleared": "🧹",
-        "input_audio_buffer.committed": "📨",
-        "conversation.item.create": "📥",
-        "conversation.item.delete": "🗑️",
-        "conversation.item.truncate": "✂️",
-        "conversation.item.created": "📤",
-        "conversation.item.deleted": "🗑️",
-        "conversation.item.truncated": "✂️",
-        "response.create": "➡️",
-        "response.created": "📝",
-        "response.output_item.added": "➕",
-        "response.output_item.done": "✅",
-        "response.text.delta": "✍️",
-        "response.text.done": "📝",
-        "response.audio.delta": "🔊",
-        "response.audio.done": "🔇",
-        "response.done": "✔️",
-        "response.cancel": "⛔",
-        "response.function_call_arguments.delta": "📥",
-        "response.function_call_arguments.done": "📥",
-        "rate_limits.updated": "⏳",
-        "error": "❌",
-        "conversation.item.input_audio_transcription.completed": "📝",
-        "conversation.item.input_audio_transcription.failed": "⚠️",
-    }
-    emoji = event_emojis.get(event_type, "❓")
-    icon = "⬆️ - Out" if direction == "outgoing" else "⬇️ - In"
-    logging.info(f"{emoji} {icon} {event_type}")
+
 
 
 def structured_output_prompt(prompt: str, response_format: BaseModel) -> BaseModel:
@@ -609,22 +513,6 @@ class AsyncMicrophone:
         logging.info("AsyncMicrophone closed")
 
 
-def base64_encode_audio(audio_bytes):
-    return base64.b64encode(audio_bytes).decode("utf-8")
-
-
-def log_runtime(function_or_name: str, duration: float):
-    jsonl_file = RUN_TIME_TABLE_LOG_JSON
-    time_record = {
-        "timestamp": datetime.now().isoformat(),
-        "function": function_or_name,
-        "duration": f"{duration:.4f}",
-    }
-    with open(jsonl_file, "a") as file:
-        json.dump(time_record, file)
-        file.write("\n")
-
-    logging.info(f"⏰ {function_or_name}() took {duration:.4f} seconds")
 
 
 async def realtime_api():
@@ -939,7 +827,7 @@ async def realtime_api():
                         if not mic.is_receiving:
                             audio_data = mic.get_audio_data()
                             if audio_data and len(audio_data) > 0:
-                                base64_audio = base64_encode_audio(audio_data)
+                                base64_audio = encode_audio(audio_data)
                                 if base64_audio:
                                     audio_event = {
                                         "type": "input_audio_buffer.append",

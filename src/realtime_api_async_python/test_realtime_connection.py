@@ -16,7 +16,7 @@ async def test_realtime_api_connection():
 
     # Define the WebSocket URL with the appropriate model
     # Replace 'gpt-4' with the correct model name if necessary
-    url = "wss://api.openai.com/v1/realtime?model=gpt-4"
+    url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
 
     # Set the required headers
     headers = {
