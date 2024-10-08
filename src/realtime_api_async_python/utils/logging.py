@@ -2,9 +2,6 @@ import os
 import logging
 import json
 from datetime import datetime
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # Set up logging
 logging.basicConfig(

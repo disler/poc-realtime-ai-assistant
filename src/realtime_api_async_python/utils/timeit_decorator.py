@@ -58,4 +58,3 @@ def timeit_decorator(func):
         return result
 
     return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
-
