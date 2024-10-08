@@ -15,3 +15,7 @@ model_name_to_id = {
     ModelName.base_model: "gpt-4o-2024-08-06",
     ModelName.fast_model: "gpt-4o-mini",
 }
+
+def get_model_canonical_name(key: str):
+    result = model_name_to_id.get("ModelName." + key, model_name_to_id[ModelName.base_model])
+    return result

@@ -2,9 +2,10 @@ import json
 import os
 
 from pydantic import BaseModel
+
 from ..openai.chat_prompt import chat_prompt
 from ..openai.structured_output_prompt import structured_output_prompt
-from ..openai.models import ModelName, model_name_to_id
+from ..openai.models import ModelName, get_model_canonical_name, model_name_to_id
 from ..utils.timeit_decorator import timeit_decorator
 
 
@@ -17,6 +18,8 @@ class FileSelectionResponse(BaseModel):
     file: str
     model: ModelName = ModelName.base_model
 
+class FileReadingResponse(BaseModel):
+    file: str
 
 class FileUpdateResponse(BaseModel):
     updates: str
@@ -196,9 +199,7 @@ async def update_file(prompt: str, model: ModelName = ModelName.base_model) -> d
 
     selected_file = file_selection_response.file
     selected_model_key = file_selection_response.model
-    selected_model = model_name_to_id.get(
-        selected_model_key, model_name_to_id[ModelName.base_model]
-    )
+    selected_model = get_model_canonical_name(selected_model_key)
 
     file_path = os.path.join(scratch_pad_dir, selected_file)
 
@@ -245,4 +246,94 @@ async def update_file(prompt: str, model: ModelName = ModelName.base_model) -> d
         "status": "File updated",
         "file_name": selected_file,
         "model_used": selected_model_key,
+    }
+
+@timeit_decorator
+async def read_file(prompt: str) -> dict:
+    """
+    Read a file based on the user's prompt and share it with the LLM.
+    """
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+    # Ensure the scratch pad directory exists
+    os.makedirs(scratch_pad_dir, exist_ok=True)
+
+    # List available files in SCRATCH_PAD_DIR
+    available_files = os.listdir(scratch_pad_dir)
+    available_files_str = ", ".join(available_files)
+
+    # Build the structured prompt to select the file and model
+    select_file_prompt = f"""
+<purpose>
+    Select a file from the available files and choose the appropriate model based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the list of available files, infer which file the user wants to read.</instruction>
+    <instruction>Also, select the most appropriate model from the available models mapping.</instruction>
+    <instruction>If the user does not specify a model, default to 'base_model'.</instruction>
+    <instruction>If no file matches, return an empty string for 'file'.</instruction>
+</instructions>
+
+<available-files>
+    {available_files_str}
+</available-files>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+"""
+
+    # Call the LLM to select the file and model
+    file_selection_response = structured_output_prompt(
+        select_file_prompt, FileReadingResponse
+    )
+
+    # Check if a file was selected
+    if not file_selection_response.file:
+        return {"status": "No matching file found"}
+
+    selected_file = file_selection_response.file
+    selected_model = get_model_canonical_name('')
+
+    file_path = os.path.join(scratch_pad_dir, selected_file)
+
+    # Load the content of the selected file
+    with open(file_path, "r") as f:
+        file_content = f.read()
+
+    # Build the structured prompt to read the file
+    read_file_prompt = f"""
+<purpose>
+    Ingest the content of the file based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the file content, Summarize the contents of the file.</instruction>
+    <instruction>The file-name is the name of the file to read.</instruction>
+    <instruction>The file-content is the contents of the file.</instruction>
+    <instruction>Respond with validation that the file has contents, and the nature of those contents.</instruction>
+</instructions>
+
+<file-name>
+    {selected_file}
+</file-name>
+
+<file-content>
+    {file_content}
+</file-content>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+"""
+
+    # Call the LLM to generate the updates using the selected model
+    file_update_response = chat_prompt(read_file_prompt, selected_model)
+
+    return {
+        "status": "File added",
+        "file_name": selected_file,
+        "file_update_response": file_update_response,
+        "file_content": file_content
     }

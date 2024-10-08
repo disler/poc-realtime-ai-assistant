@@ -1,13 +1,14 @@
 from .get_current_time import get_current_time
 from .get_random_number import get_random_number
 from .open_browser import open_browser
-from .file_operations import create_file, update_file, delete_file
+from .file_operations import create_file, update_file, delete_file, read_file
 
 function_map = {
     "get_current_time": get_current_time,
     "get_random_number": get_random_number,
     "open_browser": open_browser,
     "create_file": create_file,
+    "read_file": read_file,
     "update_file": update_file,
     "delete_file": delete_file,
 }
@@ -65,6 +66,21 @@ tool_schema = [
                 },
             },
             "required": ["file_name", "prompt"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "read_file",
+        "description": "Reads a file based on the user's prompt.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The user's prompt describing the file name.",
+                }
+            },
+            "required": ["prompt"],  # 'model' is optional
         },
     },
     {
