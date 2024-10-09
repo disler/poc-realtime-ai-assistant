@@ -8,9 +8,12 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 try:
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo", messages=[{"role": "user", "content": "Hello"}]
-    )
-    print("API Key is valid. Response: ", response.choices[0].message.content)
+    models = openai.models.list()
+    print("API Key is valid")
+    print("Available models:")
+    for model in models.data:
+        print("  -", model.id)
+except openai.AuthenticationError:
+    print("API Key is invalid")
 except Exception as e:
-    print(f"Invalid API Key: {e}")
+    print(f"Unhandled exception occurred: {str(e)}")
