@@ -13,7 +13,7 @@
 
 ## Setup
 - [Install uv](https://docs.astral.sh/uv/), the hyper modern Python package manager.
-- Setup environment `cp .env.sample .env` add your `OPENAI_API_KEY`
+- Setup environment `cp .env.sample .env` add your `OPENAI_API_KEY` and a `FIRECRAWL_API_KEY` for scraping.
 - Update `personalization.json` to fit your setup
 - Install dependencies `uv sync`
 - Run the realtime assistant `uv run main` or `uv run main --prompts "Hello, how are you?|What time is it?|Open Hacker News"`
@@ -44,7 +44,7 @@ The assistant is equipped with the following tools:
 - `reset_active_memory`: Resets the active memory to an empty dictionary.
 
 ### Information Sourcing
-- `scrap_to_file_from_clipboard`: Gets a URL from the clipboard, scrapes its content, and saves it to a file in the scratch_pad_dir.
+- `scrap_to_file_from_clipboard`: Gets a URL from the clipboard, scrapes its content, and saves it to a file in the scratch_pad_dir. Requires a [firecrawl](https://www.firecrawl.dev/) `FIRECRAWL_API_KEY` environment variable.
 
 ## Try This
 
@@ -116,6 +116,7 @@ Tools are functions defined in `modules/tools.py` that extend the assistant's ca
 - Fix audio randomly cutting out near the end.
 
 ## Resources
+- https://www.firecrawl.dev/
 - https://youtu.be/vN0t-kcPOXo
 - https://youtu.be/090oR--s__8
 - https://openai.com/index/introducing-the-realtime-api/
