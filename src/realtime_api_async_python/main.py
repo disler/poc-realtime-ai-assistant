@@ -64,6 +64,7 @@ def log_runtime(function_or_name: str, duration: float):
     logger.info(f"⏰ {function_or_name}() took {duration:.4f} seconds")
 
 
+
 async def realtime_api(prompts=None):
     while True:
         try:
@@ -86,8 +87,8 @@ async def realtime_api(prompts=None):
                 url,
                 extra_headers=headers,
                 close_timeout=120,
-                ping_timeout=120,
-                ping_interval=30,
+                ping_interval=30,   # Adjust this value based on server requirements
+                ping_timeout=10,    # Adjust this value based on server requirements
             ) as websocket:
                 log_info("✅ Connected to the server.", style="bold green")
 
@@ -156,20 +157,54 @@ async def realtime_api(prompts=None):
                                         args = None
                                     if function_name in function_map:
                                         log_tool_call(function_name, args, None)
-                                        if args:
-                                            result = await function_map[function_name](
-                                                **args
-                                            )
-                                        else:
-                                            result = await function_map[function_name]()
-                                        log_tool_call(function_name, args, result)
+                                        try:
+                                            if args:
+                                                result = await function_map[function_name](**args)
+                                            else:
+                                                result = await function_map[function_name]()
+                                            log_tool_call(function_name, args, result)
+                                        except Exception as e:
+                                            error_message = f"Error executing function '{function_name}': {str(e)}"
+                                            log_error(error_message)
+                                            result = {"error": error_message}
+                                            
+                                            # Add error to assistant's response
+                                            error_item = {
+                                                "type": "conversation.item.create",
+                                                "item": {
+                                                    "type": "message",
+                                                    "role": "assistant",
+                                                    "content": [
+                                                        {
+                                                            "type": "text",
+                                                            "text": f"An error occurred while executing the function: {error_message}"
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                            log_ws_event("Outgoing", error_item)
+                                            await websocket.send(json.dumps(error_item))
                                     else:
-                                        result = {
-                                            "error": f"Function '{function_name}' not found."
+                                        error_message = f"Function '{function_name}' not found. Add to function_map in tools.py."
+                                        log_error(error_message)
+                                        result = {"error": error_message}
+                                        
+                                        # Add error to assistant's response
+                                        error_item = {
+                                            "type": "conversation.item.create",
+                                            "item": {
+                                                "type": "message",
+                                                "role": "assistant",
+                                                "content": [
+                                                    {
+                                                        "type": "text",
+                                                        "text": error_message
+                                                    }
+                                                ]
+                                            }
                                         }
-                                        raise Exception(
-                                            f"Function '{function_name}' not found. Add to function_map in tools.py."
-                                        )
+                                        log_ws_event("Outgoing", error_item)
+                                        await websocket.send(json.dumps(error_item))
                                     function_call_output = {
                                         "type": "conversation.item.create",
                                         "item": {

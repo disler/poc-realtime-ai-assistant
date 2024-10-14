@@ -28,12 +28,17 @@ import re
 
 
 @timeit_decorator
-async def ingest_memory() -> str:
+async def ingest_memory() -> dict:
     """
     Returns the current memory content using memory_manager.
     """
     memory_manager.load_memory()
-    return memory_manager.get_xml_for_prompt(["*"])
+    memory_content = memory_manager.get_xml_for_prompt(["*"])
+    return {
+        "ingested_content": memory_content,
+        "message": "Successfully ingested content",
+        "success": True
+    }
 
 
 @timeit_decorator
@@ -71,16 +76,18 @@ async def ingest_file(prompt: str) -> dict:
 
     if not file_selection_response.file:
         return {
-            "status": "error",
+            "ingested_content": None,
             "message": "No matching file found for the given prompt.",
+            "success": False
         }
 
     file_path = os.path.join(scratch_pad_dir, file_selection_response.file)
 
     if not os.path.exists(file_path):
         return {
-            "status": "error",
+            "ingested_content": None,
             "message": f"File '{file_selection_response.file}' does not exist in '{scratch_pad_dir}'.",
+            "success": False
         }
 
     # Read the file content
@@ -88,12 +95,16 @@ async def ingest_file(prompt: str) -> dict:
         with open(file_path, "r") as f:
             file_content = f.read()
     except Exception as e:
-        return {"status": "error", "message": f"Failed to read the file: {str(e)}"}
+        return {
+            "ingested_content": None,
+            "message": f"Failed to read the file: {str(e)}",
+            "success": False
+        }
 
     return {
-        "status": "success",
-        "file_name": file_selection_response.file,
-        "file_content": file_content,
+        "ingested_content": file_content,
+        "message": "Successfully ingested content",
+        "success": True
     }
 
 
@@ -479,20 +490,32 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
         return {"status": "error", "message": f"Failed to read tables: {str(e)}"}
 
     # Step 6: Generate SQL and file name using structured_output_prompt
+    from enum import Enum
+
+    class OutputFormat(str, Enum):
+        CSV = '.csv'
+        JSON = '.json'
+
     class GenerateSQLResponse(BaseModel):
         file_name: str
         sql_query: str
+        output_format: OutputFormat
+
+    # Get all memory content
+    memory_content = memory_manager.get_xml_for_prompt(["*"])
 
     prompt_structure = f"""
 <purpose>
-    Generate an SQL query and a suitable file name based on the user's prompt and available table definitions.
+    Generate an SQL query and a suitable file name based on the user's prompt, available table definitions, and current memory content.
 </purpose>
 
 <instructions>
     <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
-    <instruction>Determine a clear and descriptive file name for saving the SQL query results.</instruction>
+    <instruction>Determine a clear and descriptive file name for saving the SQL query.</instruction>
     <instruction>Respond only with the required fields: 'file_name' and 'sql_query'.</instruction>
-    <instruction>Be sure write the sql_query in a way that is compatible with the sql_dialect.</instruction>
+    <instruction>Ensure the file_name ends with '.sql'.</instruction>
+    <instruction>Consider the current memory content when generating the SQL query, if relevant.</instruction>
+    <instruction>Ensure the SQL query is compatible with the specified sql_dialect.</instruction>
 </instructions>
 
 <table_definitions>
@@ -502,6 +525,8 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
 <sql_dialect>
 {sql_dialect}
 </sql_dialect>
+
+{memory_content}
 
 <user_prompt>
 {prompt}
@@ -523,8 +548,23 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
         "message": f"SQL query saved to file '{response.file_name}'.",
     }
 
+
+from enum import Enum
+
+class OutputFormat(str, Enum):
+    CSV = '.csv'
+    JSON = '.json'
+
+class GenerateSQLResponse(BaseModel):
+    file_name: str
+    sql_query: str
+    output_format: OutputFormat
+
 @timeit_decorator
-async def sql_to_csv(prompt: str) -> dict:
+async def sql_to_format(prompt: str) -> dict:
+    """
+    Generates an SQL query based on user's prompt, executes it, and saves the results to a file in the specified format.
+    """
     # Step 1: Load sql_dialect from personalization.json
     sql_dialect = personalization.get("sql_dialect")
     if not sql_dialect:
@@ -557,21 +597,22 @@ async def sql_to_csv(prompt: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Failed to read tables: {str(e)}"}
 
-    # Step 6: Generate SQL query and file name using structured_output_prompt
-    class GenerateSQLResponse(BaseModel):
-        file_name: str
-        sql_query: str
+    # Step 6: Generate SQL query, output format, and file name using structured_output_prompt
+    # Get all memory content
+    memory_content = memory_manager.get_xml_for_prompt(["*"])
 
     prompt_structure = f"""
 <purpose>
-    Generate an SQL query and a suitable CSV file name based on the user's prompt and available table definitions.
+    Generate an SQL query, output format, and a suitable file name based on the user's prompt, available table definitions, and current memory content.
 </purpose>
 
 <instructions>
     <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
-    <instruction>Determine a clear and descriptive CSV file name for saving the SQL query results.</instruction>
-    <instruction>Respond only with the required fields: 'file_name' and 'sql_query'.</instruction>
-    <instruction>Ensure the file_name ends with '.csv'.</instruction>
+    <instruction>Determine whether to output the results in '.csv' or '.json' format.</instruction>
+    <instruction>Decide on a clear and descriptive file name for saving the query results, ensuring the file extension matches the output format.</instruction>
+    <instruction>Respond only with the required fields: 'file_name', 'sql_query', and 'output_format'.</instruction>
+    <instruction>Consider the current memory content when generating the SQL query, if relevant.</instruction>
+    <instruction>Ensure the SQL query is compatible with the specified sql_dialect.</instruction>
 </instructions>
 
 <table_definitions>
@@ -581,6 +622,8 @@ async def sql_to_csv(prompt: str) -> dict:
 <sql_dialect>
 {sql_dialect}
 </sql_dialect>
+
+{memory_content}
 
 <user_prompt>
 {prompt}
@@ -595,29 +638,82 @@ async def sql_to_csv(prompt: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Failed to execute SQL query: {str(e)}"}
 
-    # Step 8: Save the DataFrame to a CSV file
+    # Step 8: Save the DataFrame to a file based on the output_format
     scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
     os.makedirs(scratch_pad_dir, exist_ok=True)
-    csv_file_path = os.path.join(scratch_pad_dir, response.file_name)
+    file_path = os.path.join(scratch_pad_dir, response.file_name)
 
     try:
-        df.to_csv(csv_file_path, index=False)
+        if response.output_format == OutputFormat.CSV:
+            df.to_csv(file_path, index=False)
+        elif response.output_format == OutputFormat.JSON:
+            df.to_json(file_path, orient="records", lines=True)
+        else:
+            return {"status": "error", "message": f"Invalid output format: {response.output_format}"}
     except Exception as e:
-        return {"status": "error", "message": f"Failed to save CSV file: {str(e)}"}
+        return {"status": "error", "message": f"Failed to save file: {str(e)}"}
 
     return {
         "status": "success",
-        "message": f"SQL query results saved to CSV file '{response.file_name}'.",
+        "message": f"SQL query results saved to {response.output_format} file '{response.file_name}'.",
     }
 
-@timeit_decorator
-async def sql_to_json(prompt: str) -> dict:
-    # Step 1: Load sql_dialect from personalization.json
+async def run_sql_file(prompt: str) -> dict:
+    """
+    Executes an SQL file based on the user's prompt.
+    """
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+    
+    # Step 1: Select the file based on the prompt
+    select_file_prompt = f"""
+<purpose>
+    Select an SQL file from the available files based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the list of available files, infer which SQL file the user wants to execute.</instruction>
+    <instruction>If no file matches, return an empty string for 'file'.</instruction>
+</instructions>
+
+<available-files>
+    {", ".join([f for f in os.listdir(scratch_pad_dir) if f.endswith('.sql')])}
+</available-files>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+    """
+
+    file_selection_response = structured_output_prompt(
+        select_file_prompt,
+        FileReadResponse,
+        llm_model=model_name_to_id[ModelName.fast_model],
+    )
+
+    if not file_selection_response.file:
+        return {"status": "error", "message": "No matching SQL file found for the given prompt."}
+
+    file_path = os.path.join(scratch_pad_dir, file_selection_response.file)
+
+    if not os.path.exists(file_path):
+        return {
+            "status": "error",
+            "message": f"File '{file_selection_response.file}' does not exist in '{scratch_pad_dir}'.",
+        }
+
+    # Step 2: Read the SQL query from the selected file
+    try:
+        with open(file_path, "r") as f:
+            sql_query = f.read()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read the file: {str(e)}"}
+
+    # Step 3: Load sql_dialect from personalization.json
     sql_dialect = personalization.get("sql_dialect")
     if not sql_dialect:
         return {"status": "error", "message": "No SQL dialect provided."}
 
-    # Step 2: Load the database URL from environment variables
+    # Step 4: Load the database URL from environment variables
     database_url_env_var = f"{sql_dialect.upper()}_URL"
     database_url = os.getenv(database_url_env_var)
     if not database_url:
@@ -626,76 +722,40 @@ async def sql_to_json(prompt: str) -> dict:
             "message": f"{database_url_env_var} environment variable not set.",
         }
 
-    # Step 3: Get the database instance using the factory function
+    # Step 5: Get the database instance using the factory function
     try:
         database = get_database_instance(sql_dialect)
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 
-    # Step 4: Connect to the database
+    # Step 6: Connect to the database
     try:
         database.connect(database_url)
     except Exception as e:
         return {"status": "error", "message": f"Failed to connect: {str(e)}"}
 
-    # Step 5: Read table definitions
-    try:
-        table_definitions = database.read_tables()
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to read tables: {str(e)}"}
-
-    # Step 6: Generate SQL query and file name using structured_output_prompt
-    class GenerateSQLResponse(BaseModel):
-        file_name: str
-        sql_query: str
-
-    prompt_structure = f"""
-<purpose>
-    Generate an SQL query and a suitable JSON file name based on the user's prompt and available table definitions.
-</purpose>
-
-<instructions>
-    <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
-    <instruction>Determine a clear and descriptive JSON file name for saving the SQL query results.</instruction>
-    <instruction>Respond only with the required fields: 'file_name' and 'sql_query'.</instruction>
-    <instruction>Ensure the file_name ends with '.json'.</instruction>
-</instructions>
-
-<table_definitions>
-{table_definitions}
-</table_definitions>
-
-<sql_dialect>
-{sql_dialect}
-</sql_dialect>
-
-<user_prompt>
-{prompt}
-</user_prompt>
-    """
-
-    response = structured_output_prompt(prompt_structure, GenerateSQLResponse)
-
     # Step 7: Execute the SQL query
     try:
-        df = database.execute_sql(response.sql_query)
+        df = database.execute_sql(sql_query)
     except Exception as e:
         return {"status": "error", "message": f"Failed to execute SQL query: {str(e)}"}
 
-    # Step 8: Save the DataFrame to a JSON file
-    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
-    os.makedirs(scratch_pad_dir, exist_ok=True)
-    json_file_path = os.path.join(scratch_pad_dir, response.file_name)
-
+    # Step 8: Save the results to a CSV file
+    output_file_name = os.path.splitext(file_selection_response.file)[0] + "_output.csv"
+    output_file_path = os.path.join(scratch_pad_dir, output_file_name)
+    
     try:
-        df.to_json(json_file_path, orient='records', lines=True)
+        df.to_csv(output_file_path, index=False)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to save JSON file: {str(e)}"}
+        return {"status": "error", "message": f"Failed to save results: {str(e)}"}
 
     return {
         "status": "success",
-        "message": f"SQL query results saved to JSON file '{response.file_name}'.",
+        "message": f"SQL query executed successfully. Results saved to '{output_file_name}'.",
+        "file_name": file_selection_response.file,
+        "output_file": output_file_name,
     }
+
 
 @timeit_decorator
 async def delete_file(prompt: str, force_delete: bool = False) -> dict:
@@ -1354,8 +1414,8 @@ function_map = {
     "clipboard_to_file": clipboard_to_file,
     "load_tables_into_memory": load_tables_into_memory,
     "generate_sql_save_to_file": generate_sql_save_to_file,
-    "sql_to_csv": sql_to_csv,
-    "sql_to_json": sql_to_json,
+    "sql_to_format": sql_to_format,
+    "run_sql_file": run_sql_file,
 }
 
 # Tools array for session initialization
@@ -1693,8 +1753,8 @@ tools = [
     },
     {
         "type": "function",
-        "name": "sql_to_csv",
-        "description": "Generates an SQL query based on the user's prompt, executes it, and saves the results to a CSV file.",
+        "name": "sql_to_format",
+        "description": "Generates an SQL query based on the user's prompt, executes it, and saves the results to a file in the specified format.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1708,14 +1768,14 @@ tools = [
     },
     {
         "type": "function",
-        "name": "sql_to_json",
-        "description": "Generates an SQL query based on the user's prompt, executes it, and saves the results to a JSON file.",
+        "name": "run_sql_file",
+        "description": "Executes an SQL file based on the user's prompt.",
         "parameters": {
             "type": "object",
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The user's prompt describing what SQL query to generate and execute.",
+                    "description": "The user's prompt describing which SQL file to execute.",
                 },
             },
             "required": ["prompt"],
