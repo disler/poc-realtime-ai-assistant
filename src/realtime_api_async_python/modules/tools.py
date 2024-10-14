@@ -25,6 +25,64 @@ from .mermaid import generate_diagram
 
 
 @timeit_decorator
+async def ingest_file(prompt: str) -> dict:
+    """
+    Selects a file based on the user's prompt, reads its content, and returns the file data.
+    """
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+    # Step 1: Select the file based on the prompt
+    select_file_prompt = f"""
+<purpose>
+    Select a file from the available files based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the list of available files, infer which file the user wants to ingest.</instruction>
+    <instruction>If no file matches, return an empty string for 'file'.</instruction>
+</instructions>
+
+<available-files>
+    {", ".join(os.listdir(scratch_pad_dir))}
+</available-files>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+    """
+
+    file_selection_response = structured_output_prompt(
+        select_file_prompt,
+        FileReadResponse,
+        llm_model=model_name_to_id[ModelName.fast_model],
+    )
+
+    if not file_selection_response.file:
+        return {"status": "error", "message": "No matching file found for the given prompt."}
+
+    file_path = os.path.join(scratch_pad_dir, file_selection_response.file)
+
+    if not os.path.exists(file_path):
+        return {
+            "status": "error",
+            "message": f"File '{file_selection_response.file}' does not exist in '{scratch_pad_dir}'."
+        }
+
+    # Read the file content
+    try:
+        with open(file_path, "r") as f:
+            file_content = f.read()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read the file: {str(e)}"}
+
+    return {
+        "status": "success",
+        "file_name": file_selection_response.file,
+        "file_content": file_content
+    }
+
+
+@timeit_decorator
 async def add_to_memory(key: str, value: Any) -> dict:
     """
     Add a key-value pair to memory using the MemoryManager's upsert method.
@@ -920,6 +978,7 @@ function_map = {
     "generate_diagram": generate_diagram,
     "runnable_code_check": runnable_code_check,
     "run_python": run_python,
+    "ingest_file": ingest_file,
 }
 
 # Tools array for session initialization
@@ -1190,6 +1249,21 @@ tools = [
                 "prompt": {
                     "type": "string",
                     "description": "The user's prompt describing which Python file to execute.",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "ingest_file",
+        "description": "Selects a file based on the user's prompt, reads its content, and returns the file data.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The user's prompt describing which file to ingest.",
                 },
             },
             "required": ["prompt"],
