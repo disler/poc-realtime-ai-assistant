@@ -45,6 +45,11 @@ The assistant is equipped with the following tools:
 
 ### Information Sourcing
 - `scrap_to_file_from_clipboard`: Gets a URL from the clipboard, scrapes its content, and saves it to a file in the scratch_pad_dir. Requires a [firecrawl](https://www.firecrawl.dev/) `FIRECRAWL_API_KEY` environment variable.
+- `ingest_file`: Selects a file based on the user's prompt, reads its content, and returns the file data.
+- `ingest_memory`: Returns the current memory content using memory_manager.
+- `clipboard_to_file`: Gets content from clipboard, generates a file name based on the content, and saves the content (trimmed to 1000 chars max) to a file in the scratch_pad_dir.
+- `load_tables_into_memory`: Loads table definitions from Database and saves them to active memory.
+- `generate_sql_save_to_file`: Generates an SQL query based on user's prompt and saves it to a file.
 
 ## Try This
 

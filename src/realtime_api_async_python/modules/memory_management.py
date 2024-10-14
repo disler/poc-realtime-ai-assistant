@@ -49,12 +49,19 @@ class MemoryManager:
     def list_keys(self) -> list:
         return list(self.memory.keys())
 
+    def raw_memory(self) -> str:
+        return json.dumps(self.memory)
+
     def upsert(self, key: str, value: Any) -> bool:
         self.memory[key] = value
         self.save_memory()
         return True
 
     def get_xml_for_prompt(self, keys: List[str]) -> str:
+
+        # reload memory from file
+        self.load_memory()
+
         root = ET.Element("memory")
         matched_keys = False
         for pattern in keys:

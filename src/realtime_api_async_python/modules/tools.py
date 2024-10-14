@@ -25,21 +25,16 @@ from .utils import (
 )
 from .mermaid import generate_diagram
 from .database import get_database_instance
+import re
 
 
 @timeit_decorator
 async def ingest_memory() -> str:
     """
-    Returns the ACTIVE_MEMORY .env var json content.
+    Returns the current memory content using memory_manager.
     """
-    active_memory = os.getenv("ACTIVE_MEMORY")
-    if active_memory:
-        try:
-            return json.dumps(json.loads(active_memory), indent=2)
-        except json.JSONDecodeError:
-            return "Error: ACTIVE_MEMORY environment variable is not valid JSON."
-    else:
-        return "Error: ACTIVE_MEMORY environment variable is not set."
+    memory_manager.load_memory()
+    return memory_manager.get_xml_for_prompt(["*"])
 
 
 @timeit_decorator
@@ -498,11 +493,16 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
     <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
     <instruction>Determine a clear and descriptive file name for saving the SQL query results.</instruction>
     <instruction>Respond only with the required fields: 'file_name' and 'sql_query'.</instruction>
+    <instruction>Be sure write the sql_query in a way that is compatible with the sql_dialect.</instruction>
 </instructions>
 
 <table_definitions>
 {table_definitions}
 </table_definitions>
+
+<sql_dialect>
+{sql_dialect}
+</sql_dialect>
 
 <user_prompt>
 {prompt}
@@ -901,6 +901,65 @@ async def scrap_to_file_from_clipboard() -> dict:
 
 
 @timeit_decorator
+async def clipboard_to_file() -> dict:
+    """
+    Get content from clipboard, generate a file name based on the content,
+    and save the content (trimmed to 1000 chars max) to a file in the scratch_pad_dir.
+    """
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+    try:
+        # Get content from clipboard
+        content = pyperclip.paste().strip()
+
+        # Trim content to 1000 chars max
+        trimmed_content = content[:1000]
+
+        # Generate file name
+        file_name_prompt = f"""
+<purpose>
+    Generate a suitable file name based on the following content:
+    {trimmed_content[:100]}...
+</purpose>
+
+<instructions>
+    <instruction>Create a short, descriptive file name based on the content.</instruction>
+    <instruction>Use lowercase letters, numbers, and underscores only.</instruction>
+    <instruction>Include an appropriate file extension (e.g., .txt, .md, .py) based on the content type.</instruction>
+    <instruction>Limit the file name to 50 characters maximum, including the extension.</instruction>
+</instructions>
+        """
+
+        class FileNameResponse(BaseModel):
+            file_name: str
+
+        file_name_response = structured_output_prompt(
+            file_name_prompt, FileNameResponse
+        )
+        file_name = file_name_response.file_name
+
+        # Ensure the file name is valid
+        file_name = re.sub(r"[^\w\-_\.]", "_", file_name)
+        file_name = file_name[:50]  # Limit to 50 characters
+
+        # Save to file
+        file_path = os.path.join(scratch_pad_dir, file_name)
+        with open(file_path, "w") as file:
+            file.write(content)
+
+        return {
+            "status": "success",
+            "message": f"Content saved to {file_path}",
+            "file_name": file_name,
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to save clipboard content to file: {str(e)}",
+        }
+
+
+@timeit_decorator
 async def runnable_code_check(prompt: str) -> dict:
     """
     Checks if the code in the specified file is runnable. If not, provides the necessary changes to make it runnable.
@@ -1120,6 +1179,9 @@ function_map = {
     "run_python": run_python,
     "ingest_file": ingest_file,
     "ingest_memory": ingest_memory,
+    "clipboard_to_file": clipboard_to_file,
+    "load_tables_into_memory": load_tables_into_memory,
+    "generate_sql_save_to_file": generate_sql_save_to_file,
 }
 
 # Tools array for session initialization
@@ -1439,6 +1501,16 @@ tools = [
         "type": "function",
         "name": "ingest_memory",
         "description": "Returns the ACTIVE_MEMORY .env var json content.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "type": "function",
+        "name": "clipboard_to_file",
+        "description": "Gets content from clipboard, generates a file name based on the content, and saves the content (trimmed to 1000 chars max) to a file in the scratch_pad_dir.",
         "parameters": {
             "type": "object",
             "properties": {},

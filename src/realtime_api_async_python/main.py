@@ -83,7 +83,11 @@ async def realtime_api(prompts=None):
             mic = AsyncMicrophone()
 
             async with websockets.connect(
-                url, extra_headers=headers, close_timeout=60
+                url,
+                extra_headers=headers,
+                close_timeout=120,
+                ping_timeout=120,
+                ping_interval=30,
             ) as websocket:
                 log_info("✅ Connected to the server.", style="bold green")
 
