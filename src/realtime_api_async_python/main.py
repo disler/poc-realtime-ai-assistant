@@ -82,7 +82,9 @@ async def realtime_api(prompts=None):
 
             mic = AsyncMicrophone()
 
-            async with websockets.connect(url, extra_headers=headers) as websocket:
+            async with websockets.connect(
+                url, extra_headers=headers, close_timeout=60
+            ) as websocket:
                 log_info("✅ Connected to the server.", style="bold green")
 
                 # Initialize the session with voice capabilities and tool

@@ -1,1 +1,3 @@
-{}
+{
+  "diagram_text_future_software_development_lifecycle_with_ai_1.md": "graph TD\n    A[Start] --> B{AI Integrates with SDLC}\n    B -->|Requirement Analysis| C(Collect Requirements)\n    B -->|Design| D{AI-Generated Design Diagrams}\n    B -->|Implementation| E{AI-Assisted Coding}\n    B -->|Testing| F(Automated Testing with AI)\n    B -->|Deployment| G{Continuous Deployment}\n    G --> End[Finish]\n"
+}

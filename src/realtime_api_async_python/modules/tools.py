@@ -12,6 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 from .llm import structured_output_prompt, chat_prompt
 from .memory_management import memory_manager
 from .logging import log_info
+import os
+import json
 from .utils import (
     timeit_decorator,
     ModelName,
@@ -23,6 +25,21 @@ from .utils import (
 )
 from .mermaid import generate_diagram
 from .database import get_database_instance
+
+
+@timeit_decorator
+async def ingest_memory() -> str:
+    """
+    Returns the ACTIVE_MEMORY .env var json content.
+    """
+    active_memory = os.getenv("ACTIVE_MEMORY")
+    if active_memory:
+        try:
+            return json.dumps(json.loads(active_memory), indent=2)
+        except json.JSONDecodeError:
+            return "Error: ACTIVE_MEMORY environment variable is not valid JSON."
+    else:
+        return "Error: ACTIVE_MEMORY environment variable is not set."
 
 
 @timeit_decorator
@@ -59,14 +76,17 @@ async def ingest_file(prompt: str) -> dict:
     )
 
     if not file_selection_response.file:
-        return {"status": "error", "message": "No matching file found for the given prompt."}
+        return {
+            "status": "error",
+            "message": "No matching file found for the given prompt.",
+        }
 
     file_path = os.path.join(scratch_pad_dir, file_selection_response.file)
 
     if not os.path.exists(file_path):
         return {
             "status": "error",
-            "message": f"File '{file_selection_response.file}' does not exist in '{scratch_pad_dir}'."
+            "message": f"File '{file_selection_response.file}' does not exist in '{scratch_pad_dir}'.",
         }
 
     # Read the file content
@@ -79,7 +99,7 @@ async def ingest_file(prompt: str) -> dict:
     return {
         "status": "success",
         "file_name": file_selection_response.file,
-        "file_content": file_content
+        "file_content": file_content,
     }
 
 
@@ -397,7 +417,10 @@ async def load_tables_into_memory() -> dict:
     database_url_env_var = f"{sql_dialect.upper()}_URL"
     database_url = os.getenv(database_url_env_var)
     if not database_url:
-        return {"status": "error", "message": f"{database_url_env_var} environment variable not set."}
+        return {
+            "status": "error",
+            "message": f"{database_url_env_var} environment variable not set.",
+        }
 
     # Step 3: Get the database instance using the factory function
     try:
@@ -421,7 +444,10 @@ async def load_tables_into_memory() -> dict:
     memory_manager.upsert("table_definitions", table_definitions)
     memory_manager.save_memory()
 
-    return {"status": "success", "message": "Table definitions loaded into active memory."}
+    return {
+        "status": "success",
+        "message": "Table definitions loaded into active memory.",
+    }
 
 
 @timeit_decorator
@@ -435,7 +461,10 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
     database_url_env_var = f"{sql_dialect.upper()}_URL"
     database_url = os.getenv(database_url_env_var)
     if not database_url:
-        return {"status": "error", "message": f"{database_url_env_var} environment variable not set."}
+        return {
+            "status": "error",
+            "message": f"{database_url_env_var} environment variable not set.",
+        }
 
     # Step 3: Get the database instance using the factory function
     try:
@@ -490,7 +519,10 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
     with open(sql_file_path, "w") as f:
         f.write(response.sql_query)
 
-    return {"status": "success", "message": f"SQL query saved to file '{response.file_name}'."}
+    return {
+        "status": "success",
+        "message": f"SQL query saved to file '{response.file_name}'.",
+    }
 
 
 @timeit_decorator
@@ -1087,6 +1119,7 @@ function_map = {
     "runnable_code_check": runnable_code_check,
     "run_python": run_python,
     "ingest_file": ingest_file,
+    "ingest_memory": ingest_memory,
 }
 
 # Tools array for session initialization
@@ -1094,7 +1127,7 @@ tools = [
     {
         "type": "function",
         "name": "load_tables_into_memory",
-        "description": "Loads table definitions from PostgreSQL and saves them to active memory.",
+        "description": "Loads table definitions from Database and saves them to active memory.",
         "parameters": {
             "type": "object",
             "properties": {},
@@ -1400,6 +1433,16 @@ tools = [
                 },
             },
             "required": ["prompt"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "ingest_memory",
+        "description": "Returns the ACTIVE_MEMORY .env var json content.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
 ]

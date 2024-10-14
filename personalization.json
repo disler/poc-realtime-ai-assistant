@@ -15,5 +15,6 @@
   ],
   "browser_command": "open -a 'Google Chrome'",
   "ai_assistant_name": "Ada",
-  "human_name": "Dan"
+  "human_name": "Dan",
+  "sql_dialect": "postgres"
 }

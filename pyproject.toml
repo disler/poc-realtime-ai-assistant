@@ -17,6 +17,9 @@ dependencies = [
     "firecrawl-py>=1.3.0",
     "pillow>=10.4.0",
     "rich>=13.9.2",
+    "pandas>=2.2.3",
+    "psycopg2-binary>=2.9.9",
+    "duckdb>=1.1.2",
 ]
 
 [build-system]
