@@ -162,3 +162,6 @@ Tools are functions defined in `modules/tools.py` that extend the assistant's ca
 - https://github.com/Azure-Samples/aoai-realtime-audio-sdk/blob/main/README.md
 - https://docs.astral.sh/uv/
 - https://docs.astral.sh/uv/guides/scripts/#running-a-script-with-dependencies
+- https://duckdb.org/docs/api/python/overview.html
+- https://websockets.readthedocs.io/en/stable/index.html
+- https://docs.python.org/3/library/sqlite3.html

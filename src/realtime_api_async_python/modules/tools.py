@@ -553,7 +553,8 @@ from enum import Enum
 
 class OutputFormat(str, Enum):
     CSV = '.csv'
-    JSON = '.json'
+    JSONL = '.jsonl'
+    JSON_ARRAY = '.json'
 
 class GenerateSQLResponse(BaseModel):
     file_name: str
@@ -608,7 +609,7 @@ async def sql_to_format(prompt: str) -> dict:
 
 <instructions>
     <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
-    <instruction>Determine whether to output the results in '.csv' or '.json' format.</instruction>
+    <instruction>Determine whether to output the results in '.csv', '.jsonl' (JSON Lines), or '.json' (JSON array) format.</instruction>
     <instruction>Decide on a clear and descriptive file name for saving the query results, ensuring the file extension matches the output format.</instruction>
     <instruction>Respond only with the required fields: 'file_name', 'sql_query', and 'output_format'.</instruction>
     <instruction>Consider the current memory content when generating the SQL query, if relevant.</instruction>
@@ -646,8 +647,10 @@ async def sql_to_format(prompt: str) -> dict:
     try:
         if response.output_format == OutputFormat.CSV:
             df.to_csv(file_path, index=False)
-        elif response.output_format == OutputFormat.JSON:
+        elif response.output_format == OutputFormat.JSONL:
             df.to_json(file_path, orient="records", lines=True)
+        elif response.output_format == OutputFormat.JSON_ARRAY:
+            df.to_json(file_path, orient="records")
         else:
             return {"status": "error", "message": f"Invalid output format: {response.output_format}"}
     except Exception as e:
@@ -660,7 +663,7 @@ async def sql_to_format(prompt: str) -> dict:
 
 async def run_sql_file(prompt: str) -> dict:
     """
-    Executes an SQL file based on the user's prompt.
+    Executes an SQL file based on the user's prompt and saves the results to a file in the specified format.
     """
     scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
     
@@ -740,20 +743,54 @@ async def run_sql_file(prompt: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Failed to execute SQL query: {str(e)}"}
 
-    # Step 8: Save the results to a CSV file
-    output_file_name = os.path.splitext(file_selection_response.file)[0] + "_output.csv"
-    output_file_path = os.path.join(scratch_pad_dir, output_file_name)
+    # Step 8: Determine output format and file name
+    output_format_prompt = f"""
+<purpose>
+    Determine the output format and file name for the SQL query results.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt, determine whether to output the results in '.csv', '.jsonl' (JSON Lines), or '.json' (JSON array) format.</instruction>
+    <instruction>Decide on a clear and descriptive file name for saving the query results, ensuring the file extension matches the output format.</instruction>
+    <instruction>If the user doesn't specify a format, default to CSV.</instruction>
+</instructions>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+    """
+
+    class OutputFormatResponse(BaseModel):
+        file_name: str
+        output_format: OutputFormat
+
+    output_format_response = structured_output_prompt(
+        output_format_prompt,
+        OutputFormatResponse,
+        llm_model=model_name_to_id[ModelName.fast_model],
+    )
+
+    # Step 9: Save the results to a file based on the output_format
+    output_file_path = os.path.join(scratch_pad_dir, output_format_response.file_name)
     
     try:
-        df.to_csv(output_file_path, index=False)
+        if output_format_response.output_format == OutputFormat.CSV:
+            df.to_csv(output_file_path, index=False)
+        elif output_format_response.output_format == OutputFormat.JSONL:
+            df.to_json(output_file_path, orient="records", lines=True)
+        elif output_format_response.output_format == OutputFormat.JSON_ARRAY:
+            df.to_json(output_file_path, orient="records")
+        else:
+            return {"status": "error", "message": f"Invalid output format: {output_format_response.output_format}"}
     except Exception as e:
         return {"status": "error", "message": f"Failed to save results: {str(e)}"}
 
     return {
         "status": "success",
-        "message": f"SQL query executed successfully. Results saved to '{output_file_name}'.",
+        "message": f"SQL query executed successfully. Results saved to '{output_format_response.file_name}'.",
         "file_name": file_selection_response.file,
-        "output_file": output_file_name,
+        "output_file": output_format_response.file_name,
+        "output_format": output_format_response.output_format,
     }
 
 
@@ -1769,13 +1806,13 @@ tools = [
     {
         "type": "function",
         "name": "run_sql_file",
-        "description": "Executes an SQL file based on the user's prompt.",
+        "description": "Executes an SQL file based on the user's prompt and saves the results to a file in the specified format (CSV, JSONL, or JSON array).",
         "parameters": {
             "type": "object",
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The user's prompt describing which SQL file to execute.",
+                    "description": "The user's prompt describing which SQL file to execute and optionally specifying the output format.",
                 },
             },
             "required": ["prompt"],
