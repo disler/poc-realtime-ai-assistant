@@ -5,6 +5,7 @@ import random
 import logging
 import subprocess
 import pyperclip
+import pandas as pd
 from pydantic import BaseModel
 from typing import Any, Dict, Tuple, List, Optional
 from datetime import datetime
@@ -12,8 +13,6 @@ from concurrent.futures import ThreadPoolExecutor
 from .llm import structured_output_prompt, chat_prompt
 from .memory_management import memory_manager
 from .logging import log_info
-import os
-import json
 from .utils import (
     timeit_decorator,
     ModelName,
@@ -524,6 +523,179 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
         "message": f"SQL query saved to file '{response.file_name}'.",
     }
 
+@timeit_decorator
+async def sql_to_csv(prompt: str) -> dict:
+    # Step 1: Load sql_dialect from personalization.json
+    sql_dialect = personalization.get("sql_dialect")
+    if not sql_dialect:
+        return {"status": "error", "message": "No SQL dialect provided."}
+
+    # Step 2: Load the database URL from environment variables
+    database_url_env_var = f"{sql_dialect.upper()}_URL"
+    database_url = os.getenv(database_url_env_var)
+    if not database_url:
+        return {
+            "status": "error",
+            "message": f"{database_url_env_var} environment variable not set.",
+        }
+
+    # Step 3: Get the database instance using the factory function
+    try:
+        database = get_database_instance(sql_dialect)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+
+    # Step 4: Connect to the database
+    try:
+        database.connect(database_url)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to connect: {str(e)}"}
+
+    # Step 5: Read table definitions
+    try:
+        table_definitions = database.read_tables()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read tables: {str(e)}"}
+
+    # Step 6: Generate SQL query and file name using structured_output_prompt
+    class GenerateSQLResponse(BaseModel):
+        file_name: str
+        sql_query: str
+
+    prompt_structure = f"""
+<purpose>
+    Generate an SQL query and a suitable CSV file name based on the user's prompt and available table definitions.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
+    <instruction>Determine a clear and descriptive CSV file name for saving the SQL query results.</instruction>
+    <instruction>Respond only with the required fields: 'file_name' and 'sql_query'.</instruction>
+    <instruction>Ensure the file_name ends with '.csv'.</instruction>
+</instructions>
+
+<table_definitions>
+{table_definitions}
+</table_definitions>
+
+<sql_dialect>
+{sql_dialect}
+</sql_dialect>
+
+<user_prompt>
+{prompt}
+</user_prompt>
+    """
+
+    response = structured_output_prompt(prompt_structure, GenerateSQLResponse)
+
+    # Step 7: Execute the SQL query
+    try:
+        df = database.execute_sql(response.sql_query)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to execute SQL query: {str(e)}"}
+
+    # Step 8: Save the DataFrame to a CSV file
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+    os.makedirs(scratch_pad_dir, exist_ok=True)
+    csv_file_path = os.path.join(scratch_pad_dir, response.file_name)
+
+    try:
+        df.to_csv(csv_file_path, index=False)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to save CSV file: {str(e)}"}
+
+    return {
+        "status": "success",
+        "message": f"SQL query results saved to CSV file '{response.file_name}'.",
+    }
+
+@timeit_decorator
+async def sql_to_json(prompt: str) -> dict:
+    # Step 1: Load sql_dialect from personalization.json
+    sql_dialect = personalization.get("sql_dialect")
+    if not sql_dialect:
+        return {"status": "error", "message": "No SQL dialect provided."}
+
+    # Step 2: Load the database URL from environment variables
+    database_url_env_var = f"{sql_dialect.upper()}_URL"
+    database_url = os.getenv(database_url_env_var)
+    if not database_url:
+        return {
+            "status": "error",
+            "message": f"{database_url_env_var} environment variable not set.",
+        }
+
+    # Step 3: Get the database instance using the factory function
+    try:
+        database = get_database_instance(sql_dialect)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+
+    # Step 4: Connect to the database
+    try:
+        database.connect(database_url)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to connect: {str(e)}"}
+
+    # Step 5: Read table definitions
+    try:
+        table_definitions = database.read_tables()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read tables: {str(e)}"}
+
+    # Step 6: Generate SQL query and file name using structured_output_prompt
+    class GenerateSQLResponse(BaseModel):
+        file_name: str
+        sql_query: str
+
+    prompt_structure = f"""
+<purpose>
+    Generate an SQL query and a suitable JSON file name based on the user's prompt and available table definitions.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
+    <instruction>Determine a clear and descriptive JSON file name for saving the SQL query results.</instruction>
+    <instruction>Respond only with the required fields: 'file_name' and 'sql_query'.</instruction>
+    <instruction>Ensure the file_name ends with '.json'.</instruction>
+</instructions>
+
+<table_definitions>
+{table_definitions}
+</table_definitions>
+
+<sql_dialect>
+{sql_dialect}
+</sql_dialect>
+
+<user_prompt>
+{prompt}
+</user_prompt>
+    """
+
+    response = structured_output_prompt(prompt_structure, GenerateSQLResponse)
+
+    # Step 7: Execute the SQL query
+    try:
+        df = database.execute_sql(response.sql_query)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to execute SQL query: {str(e)}"}
+
+    # Step 8: Save the DataFrame to a JSON file
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+    os.makedirs(scratch_pad_dir, exist_ok=True)
+    json_file_path = os.path.join(scratch_pad_dir, response.file_name)
+
+    try:
+        df.to_json(json_file_path, orient='records', lines=True)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to save JSON file: {str(e)}"}
+
+    return {
+        "status": "success",
+        "message": f"SQL query results saved to JSON file '{response.file_name}'.",
+    }
 
 @timeit_decorator
 async def delete_file(prompt: str, force_delete: bool = False) -> dict:
@@ -1182,6 +1354,8 @@ function_map = {
     "clipboard_to_file": clipboard_to_file,
     "load_tables_into_memory": load_tables_into_memory,
     "generate_sql_save_to_file": generate_sql_save_to_file,
+    "sql_to_csv": sql_to_csv,
+    "sql_to_json": sql_to_json,
 }
 
 # Tools array for session initialization
@@ -1515,6 +1689,36 @@ tools = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+    },
+    {
+        "type": "function",
+        "name": "sql_to_csv",
+        "description": "Generates an SQL query based on the user's prompt, executes it, and saves the results to a CSV file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The user's prompt describing what SQL query to generate and execute.",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "sql_to_json",
+        "description": "Generates an SQL query based on the user's prompt, executes it, and saves the results to a JSON file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The user's prompt describing what SQL query to generate and execute.",
+                },
+            },
+            "required": ["prompt"],
         },
     },
 ]
