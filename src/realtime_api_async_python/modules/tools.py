@@ -387,6 +387,101 @@ async def update_file(prompt: str, model: ModelName = ModelName.base_model) -> d
 
 
 @timeit_decorator
+async def load_tables_into_memory() -> dict:
+    # Step 1: Load sql_dialect from personalization.json
+    sql_dialect = personalization.get("sql_dialect")
+    if sql_dialect != "postgres":
+        return {"status": "error", "message": "No supported SQL dialect provided."}
+
+    # Step 2: Load POSTGRES_URL from environment variables
+    postgres_url = os.getenv("POSTGRES_URL")
+    if not postgres_url:
+        return {"status": "error", "message": "POSTGRES_URL environment variable not set."}
+
+    # Step 3: Connect to the PostgreSQL database
+    postgres = Postgres()
+    try:
+        postgres.connect(postgres_url)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to connect to the database: {str(e)}"}
+
+    # Step 4: Load table definitions
+    try:
+        table_definitions = postgres.read_tables()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read table definitions: {str(e)}"}
+
+    # Step 5: Save table definitions to active memory
+    memory_manager.upsert("table_definitions", table_definitions)
+    memory_manager.save_memory()
+
+    return {"status": "success", "message": "Table definitions loaded into active memory."}
+
+
+@timeit_decorator
+async def generate_sql_save_to_file(prompt: str) -> dict:
+    # Step 1: Load sql_dialect from personalization.json
+    sql_dialect = personalization.get("sql_dialect")
+    if sql_dialect != "postgres":
+        return {"status": "error", "message": "No supported SQL dialect provided."}
+
+    # Step 2: Load POSTGRES_URL from environment variables
+    postgres_url = os.getenv("POSTGRES_URL")
+    if not postgres_url:
+        return {"status": "error", "message": "POSTGRES_URL environment variable not set."}
+
+    # Step 3: Connect to the PostgreSQL database
+    postgres = Postgres()
+    try:
+        postgres.connect(postgres_url)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to connect to the database: {str(e)}"}
+
+    # Step 4: Load table definitions
+    try:
+        table_definitions = postgres.read_tables()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read table definitions: {str(e)}"}
+
+    # Step 5: Generate SQL and file name using structured_output_prompt
+    class GenerateSQLResponse(BaseModel):
+        file_name: str
+        sql_query: str
+
+    prompt_structure = f"""
+<purpose>
+    Generate an SQL query and a suitable file name based on the user's prompt and available table definitions.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt, create an appropriate SQL query using the provided table definitions.</instruction>
+    <instruction>Determine a clear and descriptive file name for saving the SQL query results.</instruction>
+    <instruction>Respond only with the required fields: 'file_name' and 'sql_query'.</instruction>
+</instructions>
+
+<table_definitions>
+{table_definitions}
+</table_definitions>
+
+<user_prompt>
+{prompt}
+</user_prompt>
+    """
+
+    response = structured_output_prompt(prompt_structure, GenerateSQLResponse)
+
+    # Step 6: Save the generated SQL to a file
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+    os.makedirs(scratch_pad_dir, exist_ok=True)
+    sql_file_path = os.path.join(scratch_pad_dir, response.file_name)
+
+    with open(sql_file_path, "w") as f:
+        f.write(response.sql_query)
+
+    return {"status": "success", "message": f"SQL query saved to file '{response.file_name}'."}
+
+
+@timeit_decorator
 async def delete_file(prompt: str, force_delete: bool = False) -> dict:
     """
     Delete a file based on the user's prompt.
