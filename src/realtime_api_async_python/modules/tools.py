@@ -22,6 +22,7 @@ from .utils import (
     run_uv_script,
 )
 from .mermaid import generate_diagram
+from .postgres_sql import Postgres
 
 
 @timeit_decorator
@@ -983,6 +984,31 @@ function_map = {
 
 # Tools array for session initialization
 tools = [
+    {
+        "type": "function",
+        "name": "load_tables_into_memory",
+        "description": "Loads table definitions from PostgreSQL and saves them to active memory.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "type": "function",
+        "name": "generate_sql_save_to_file",
+        "description": "Generates an SQL query based on user's prompt and saves it to a file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The user's prompt describing the SQL query to generate.",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
     {
         "type": "function",
         "name": "get_current_time",

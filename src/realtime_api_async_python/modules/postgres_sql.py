@@ -5,14 +5,8 @@ class Postgres:
     def __init__(self):
         self.connection = None
 
-    def connect(self, db):
-        self.connection = psycopg2.connect(
-            database=db['database'],
-            user=db['user'],
-            password=db['password'],
-            host=db['host'],
-            port=db.get('port', 5432)
-        )
+    def connect(self, url: str):
+        self.connection = psycopg2.connect(url)
 
     def read_tables(self, schema: str = None) -> str:
         cursor = self.connection.cursor()
