@@ -22,7 +22,7 @@ from .utils import (
     run_uv_script,
 )
 from .mermaid import generate_diagram
-from .postgres_sql import Postgres
+from .database import get_database_instance
 
 
 @timeit_decorator
@@ -390,28 +390,34 @@ async def update_file(prompt: str, model: ModelName = ModelName.base_model) -> d
 async def load_tables_into_memory() -> dict:
     # Step 1: Load sql_dialect from personalization.json
     sql_dialect = personalization.get("sql_dialect")
-    if sql_dialect != "postgres":
-        return {"status": "error", "message": "No supported SQL dialect provided."}
+    if not sql_dialect:
+        return {"status": "error", "message": "No SQL dialect provided."}
 
-    # Step 2: Load POSTGRES_URL from environment variables
-    postgres_url = os.getenv("POSTGRES_URL")
-    if not postgres_url:
-        return {"status": "error", "message": "POSTGRES_URL environment variable not set."}
+    # Step 2: Load the database URL from environment variables
+    database_url_env_var = f"{sql_dialect.upper()}_URL"
+    database_url = os.getenv(database_url_env_var)
+    if not database_url:
+        return {"status": "error", "message": f"{database_url_env_var} environment variable not set."}
 
-    # Step 3: Connect to the PostgreSQL database
-    postgres = Postgres()
+    # Step 3: Get the database instance using the factory function
     try:
-        postgres.connect(postgres_url)
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to connect to the database: {str(e)}"}
+        database = get_database_instance(sql_dialect)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
 
-    # Step 4: Load table definitions
+    # Step 4: Connect to the database
     try:
-        table_definitions = postgres.read_tables()
+        database.connect(database_url)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to read table definitions: {str(e)}"}
+        return {"status": "error", "message": f"Failed to connect: {str(e)}"}
 
-    # Step 5: Save table definitions to active memory
+    # Step 5: Read table definitions
+    try:
+        table_definitions = database.read_tables()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read tables: {str(e)}"}
+
+    # Step 6: Save table definitions to active memory
     memory_manager.upsert("table_definitions", table_definitions)
     memory_manager.save_memory()
 
@@ -422,28 +428,34 @@ async def load_tables_into_memory() -> dict:
 async def generate_sql_save_to_file(prompt: str) -> dict:
     # Step 1: Load sql_dialect from personalization.json
     sql_dialect = personalization.get("sql_dialect")
-    if sql_dialect != "postgres":
-        return {"status": "error", "message": "No supported SQL dialect provided."}
+    if not sql_dialect:
+        return {"status": "error", "message": "No SQL dialect provided."}
 
-    # Step 2: Load POSTGRES_URL from environment variables
-    postgres_url = os.getenv("POSTGRES_URL")
-    if not postgres_url:
-        return {"status": "error", "message": "POSTGRES_URL environment variable not set."}
+    # Step 2: Load the database URL from environment variables
+    database_url_env_var = f"{sql_dialect.upper()}_URL"
+    database_url = os.getenv(database_url_env_var)
+    if not database_url:
+        return {"status": "error", "message": f"{database_url_env_var} environment variable not set."}
 
-    # Step 3: Connect to the PostgreSQL database
-    postgres = Postgres()
+    # Step 3: Get the database instance using the factory function
     try:
-        postgres.connect(postgres_url)
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to connect to the database: {str(e)}"}
+        database = get_database_instance(sql_dialect)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
 
-    # Step 4: Load table definitions
+    # Step 4: Connect to the database
     try:
-        table_definitions = postgres.read_tables()
+        database.connect(database_url)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to read table definitions: {str(e)}"}
+        return {"status": "error", "message": f"Failed to connect: {str(e)}"}
 
-    # Step 5: Generate SQL and file name using structured_output_prompt
+    # Step 5: Read table definitions
+    try:
+        table_definitions = database.read_tables()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read tables: {str(e)}"}
+
+    # Step 6: Generate SQL and file name using structured_output_prompt
     class GenerateSQLResponse(BaseModel):
         file_name: str
         sql_query: str
@@ -470,7 +482,7 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
 
     response = structured_output_prompt(prompt_structure, GenerateSQLResponse)
 
-    # Step 6: Save the generated SQL to a file
+    # Step 7: Save the generated SQL to a file
     scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
     os.makedirs(scratch_pad_dir, exist_ok=True)
     sql_file_path = os.path.join(scratch_pad_dir, response.file_name)
