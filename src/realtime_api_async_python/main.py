@@ -207,6 +207,9 @@ class RealtimeAPI:
         if self.function_call:
             function_name = self.function_call.get("name")
             call_id = self.function_call.get("call_id")
+            logger.info(
+                f"Function call: {function_name} with args: {self.function_call_args}"
+            )
             try:
                 args = (
                     json.loads(self.function_call_args)
