@@ -1,3 +1,0 @@
-{
-  "table_definitions": "CREATE TABLE Categories (\n    CategoryID INTEGER,\n    CategoryName VARCHAR\n);\n\nCREATE TABLE OrderDetails (\n    OrderDetailID INTEGER,\n    OrderID INTEGER,\n    ProductID INTEGER,\n    Quantity INTEGER\n);\n\nCREATE TABLE Orders (\n    OrderID INTEGER,\n    OrderDate DATE,\n    UserID INTEGER\n);\n\nCREATE TABLE Products (\n    ProductID INTEGER,\n    ProductName VARCHAR,\n    Price DECIMAL(10,2),\n    CategoryID INTEGER\n);\n\nCREATE TABLE Users (\n    UserID INTEGER,\n    FirstName VARCHAR,\n    LastName VARCHAR,\n    Email VARCHAR\n);\n\n"
-}
