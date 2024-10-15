@@ -562,7 +562,7 @@ class GenerateSQLResponse(BaseModel):
     output_format: OutputFormat
 
 @timeit_decorator
-async def sql_to_format(prompt: str) -> dict:
+async def generate_sql_and_execute(prompt: str) -> dict:
     """
     Generates an SQL query based on user's prompt, executes it, and saves the results to a file in the specified format.
     """
@@ -1451,7 +1451,7 @@ function_map = {
     "clipboard_to_file": clipboard_to_file,
     "load_tables_into_memory": load_tables_into_memory,
     "generate_sql_save_to_file": generate_sql_save_to_file,
-    "sql_to_format": sql_to_format,
+    "generate_sql_and_execute": generate_sql_and_execute,
     "run_sql_file": run_sql_file,
 }
 
@@ -1790,7 +1790,7 @@ tools = [
     },
     {
         "type": "function",
-        "name": "sql_to_format",
+        "name": "generate_sql_and_execute",
         "description": "Generates an SQL query based on the user's prompt, executes it, and saves the results to a file in the specified format.",
         "parameters": {
             "type": "object",
