@@ -113,8 +113,12 @@ class RealtimeAPI:
 
                     await self.send_audio_loop(websocket)
 
+                    logger.info("before await ws_task")
+
                     # Wait for the WebSocket processing task to complete
                     await ws_task
+
+                    logger.info("await ws_task complete")
 
                 # If execution reaches here without exceptions, exit the loop
                 break
