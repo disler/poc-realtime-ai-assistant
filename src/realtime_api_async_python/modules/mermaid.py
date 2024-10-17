@@ -80,6 +80,7 @@ async def generate_diagram(prompt: str, version_count: int = 1) -> dict:
     <instruction>Generate a suitable 'base_name' for the filenames based on the user's prompt. Use lowercase letters, numbers, and underscores only.</instruction>
     <instruction>Only provide the 'base_name' and the list of mermaid diagram codes in a dictionary format, without any additional text or formatting.</instruction>
     <instruction>Consider the current memory content when generating the diagrams, if relevant.</instruction>
+    <instructions>Refer to the examples to understand the format of the mermaid diagrams.</instructions>
 </instructions>
 
 <user_prompt>
@@ -87,6 +88,71 @@ async def generate_diagram(prompt: str, version_count: int = 1) -> dict:
 </user_prompt>
 
 {memory_content}
+
+<examples>
+    <example>
+        <user-chart-request>
+            Create a flowchart that shows A flowing to E. At C, branch out to H and I.
+        </user-chart-request>
+        <chart-response>
+            graph LR;
+                A
+                B
+                C
+                D
+                E
+                H
+                I
+
+                A --> B
+                A --> C
+                A --> D
+                C --> H
+                C --> I
+                D --> E
+        </chart-response>
+    </example>
+    <example>
+        <user-chart-request>
+            Build a pie chart that shows the distribution of Apples: 40, Bananas: 35, Oranges: 25.
+        </user-chart-request>
+        <chart-response>
+            pie title Distribution of Fruits
+                "Apples" : 40
+                "Bananas" : 35
+                "Oranges" : 25
+        </chart-response>
+    </example>
+    <example>
+        <user-chart-request>
+            State diagram for a traffic light. Still, Moving, Crash.
+        </user-chart-request>
+        <chart-response>
+            stateDiagram-v2
+                [*] --> Still
+                Still --> [*]
+
+                Still --> Moving
+                Moving --> Still
+                Moving --> Crash
+                Crash --> [*]
+        </chart-response>
+    </example>
+    <example>
+        <user-chart-request>
+            Create a timeline of major social media platforms from 2002 to 2006.
+        </user-chart-request>
+        <chart-response>
+            timeline
+                title History of Social Media Platforms
+                2002 : LinkedIn
+                2004 : Facebook
+                     : Google
+                2005 : Youtube
+                2006 : Twitter
+        </chart-response>
+    </example>
+</examples>
 """
 
     response = structured_output_prompt(mermaid_prompt, MermaidResponse)
