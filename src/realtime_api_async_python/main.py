@@ -43,6 +43,10 @@ scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
 # Ensure the scratch pad directory exists
 os.makedirs(scratch_pad_dir, exist_ok=True)
 
+# Load personalization data
+with open(os.getenv("PERSONALIZATION_FILE"), "r") as f:
+    personalization = json.load(f)
+
 
 def base64_encode_audio(audio_bytes):
     return base64.b64encode(audio_bytes).decode("utf-8")

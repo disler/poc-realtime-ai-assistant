@@ -4,7 +4,6 @@
 - `get_current_time`: Returns the current time.
 - `get_random_number`: Returns a random number between 1 and 100.
 - `open_browser`: Opens a browser tab with the best-fitting URL based on the user's prompt.
-- `generate_diagram`: Generates mermaid diagrams based on the user's prompt.
 - `runnable_code_check`: Checks if the code in the specified file is runnable and provides necessary changes if not.
 - `run_python`: Executes a Python script from the `scratch_pad_dir` based on the user's prompt and returns the output.
 
@@ -25,6 +24,10 @@
 
 ## Information Sourcing
 - `scrap_to_file_from_clipboard`: Gets a URL from the clipboard, scrapes its content, and saves it to a file in the scratch_pad_dir.
+
+## Data Visualization
+- `generate_diagram`: Generates mermaid diagrams based on the user's prompt.
+- `create_python_chart`: Generates a Python script to create a chart based on the user's prompt and a specified CSV file. The function reads the CSV file, provides a preview of the data, and generates code for creating the requested chart type using libraries like matplotlib or seaborn.
 
 ## AI Assistant Chat History Management
 - `ingest_memory`: Returns the current memory content using memory_manager and returns it to be read into the realtime api chat history.

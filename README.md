@@ -33,6 +33,7 @@ You can customize the behavior of the assistant by modifying the `personalizatio
   - `sqlite`: For SQLite databases
   - `postgres`: For PostgreSQL databases
   - `duckdb`: For DuckDB databases
+- `system_message_suffix`: A string that will be appended to the end of the system instructions for the AI assistant.
 
 Example `personalization.json`:
 
@@ -46,9 +47,12 @@ Example `personalization.json`:
   "browser_command": "open -a 'Google Chrome'",
   "ai_assistant_name": "Ada",
   "human_name": "User",
-  "sql_dialect": "sqlite"
+  "sql_dialect": "sqlite",
+  "system_message_suffix": "Always be helpful and concise in your responses."
 }
 ```
+
+The `system_message_suffix` allows you to add custom instructions or personality traits to your AI assistant. This suffix will be appended to the end of the default system instructions, giving you more control over how the assistant behaves and responds.
 
 ## Try This
 

@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import json
 import random
@@ -10,7 +11,8 @@ from pydantic import BaseModel
 from typing import Any, Dict, Tuple, List, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from .llm import structured_output_prompt, chat_prompt
+from enum import Enum
+from .llm import parse_markdown_backticks, structured_output_prompt, chat_prompt
 from .memory_management import memory_manager
 from .logging import log_info
 from .utils import (
@@ -37,7 +39,7 @@ async def ingest_memory() -> dict:
     return {
         "ingested_content": memory_content,
         "message": "Successfully ingested content",
-        "success": True
+        "success": True,
     }
 
 
@@ -78,7 +80,7 @@ async def ingest_file(prompt: str) -> dict:
         return {
             "ingested_content": None,
             "message": "No matching file found for the given prompt.",
-            "success": False
+            "success": False,
         }
 
     file_path = os.path.join(scratch_pad_dir, file_selection_response.file)
@@ -87,7 +89,7 @@ async def ingest_file(prompt: str) -> dict:
         return {
             "ingested_content": None,
             "message": f"File '{file_selection_response.file}' does not exist in '{scratch_pad_dir}'.",
-            "success": False
+            "success": False,
         }
 
     # Read the file content
@@ -98,13 +100,13 @@ async def ingest_file(prompt: str) -> dict:
         return {
             "ingested_content": None,
             "message": f"Failed to read the file: {str(e)}",
-            "success": False
+            "success": False,
         }
 
     return {
         "ingested_content": file_content,
         "message": "Successfully ingested content",
-        "success": True
+        "success": True,
     }
 
 
@@ -190,6 +192,18 @@ class RunPythonResponse(BaseModel):
     success: bool
     output: str
     error: Optional[str] = None
+
+
+class ChartType(str, Enum):
+    HISTOGRAM = "histogram"
+    PIE = "pie"
+    SCATTER = "scatter"
+    BAR = "bar"
+    LINE = "line"
+
+
+class PythonChartResponse(BaseModel):
+    executable_python: str
 
 
 @timeit_decorator
@@ -305,7 +319,7 @@ async def create_file(file_name: str, prompt: str) -> dict:
 
     # Write the generated content to the file
     with open(file_path, "w") as f:
-        f.write(response.file_content)
+        f.write(parse_markdown_backticks(response.file_content))
 
     return {"status": "file created", "file_name": response.file_name}
 
@@ -402,7 +416,7 @@ async def update_file(prompt: str, model: ModelName = ModelName.base_model) -> d
 
     # Apply the updates by writing the new content to the file
     with open(file_path, "w") as f:
-        f.write(file_update_response)
+        f.write(parse_markdown_backticks(file_update_response))
 
     return {
         "status": "File updated",
@@ -493,8 +507,8 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
     from enum import Enum
 
     class OutputFormat(str, Enum):
-        CSV = '.csv'
-        JSON = '.json'
+        CSV = ".csv"
+        JSON = ".json"
 
     class GenerateSQLResponse(BaseModel):
         file_name: str
@@ -551,15 +565,18 @@ async def generate_sql_save_to_file(prompt: str) -> dict:
 
 from enum import Enum
 
+
 class OutputFormat(str, Enum):
-    CSV = '.csv'
-    JSONL = '.jsonl'
-    JSON_ARRAY = '.json'
+    CSV = ".csv"
+    JSONL = ".jsonl"
+    JSON_ARRAY = ".json"
+
 
 class GenerateSQLResponse(BaseModel):
     file_name: str
     sql_query: str
     output_format: OutputFormat
+
 
 @timeit_decorator
 async def generate_sql_and_execute(prompt: str) -> dict:
@@ -652,7 +669,10 @@ async def generate_sql_and_execute(prompt: str) -> dict:
         elif response.output_format == OutputFormat.JSON_ARRAY:
             df.to_json(file_path, orient="records")
         else:
-            return {"status": "error", "message": f"Invalid output format: {response.output_format}"}
+            return {
+                "status": "error",
+                "message": f"Invalid output format: {response.output_format}",
+            }
     except Exception as e:
         return {"status": "error", "message": f"Failed to save file: {str(e)}"}
 
@@ -661,12 +681,13 @@ async def generate_sql_and_execute(prompt: str) -> dict:
         "message": f"SQL query results saved to {response.output_format} file '{response.file_name}'.",
     }
 
+
 async def run_sql_file(prompt: str) -> dict:
     """
     Executes an SQL file based on the user's prompt and saves the results to a file in the specified format.
     """
     scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
-    
+
     # Step 1: Select the file based on the prompt
     select_file_prompt = f"""
 <purpose>
@@ -694,7 +715,10 @@ async def run_sql_file(prompt: str) -> dict:
     )
 
     if not file_selection_response.file:
-        return {"status": "error", "message": "No matching SQL file found for the given prompt."}
+        return {
+            "status": "error",
+            "message": "No matching SQL file found for the given prompt.",
+        }
 
     file_path = os.path.join(scratch_pad_dir, file_selection_response.file)
 
@@ -772,7 +796,7 @@ async def run_sql_file(prompt: str) -> dict:
 
     # Step 9: Save the results to a file based on the output_format
     output_file_path = os.path.join(scratch_pad_dir, output_format_response.file_name)
-    
+
     try:
         if output_format_response.output_format == OutputFormat.CSV:
             df.to_csv(output_file_path, index=False)
@@ -781,7 +805,10 @@ async def run_sql_file(prompt: str) -> dict:
         elif output_format_response.output_format == OutputFormat.JSON_ARRAY:
             df.to_json(output_file_path, orient="records")
         else:
-            return {"status": "error", "message": f"Invalid output format: {output_format_response.output_format}"}
+            return {
+                "status": "error",
+                "message": f"Invalid output format: {output_format_response.output_format}",
+            }
     except Exception as e:
         return {"status": "error", "message": f"Failed to save results: {str(e)}"}
 
@@ -1427,6 +1454,134 @@ async def run_python(prompt: str) -> dict:
     }
 
 
+@timeit_decorator
+async def create_python_chart(prompt: str, chart_type: str) -> dict:
+    scratch_pad_dir = os.getenv("SCRATCH_PAD_DIR", "./scratchpad")
+
+    # List available CSV files
+    available_files = os.listdir(scratch_pad_dir)
+    csv_files = [f for f in available_files if f.endswith(".csv")]
+    if not csv_files:
+        return {
+            "status": "error",
+            "message": "No CSV files available in scratchpad directory.",
+        }
+
+    # Step 1: Select the CSV file based on the prompt
+    select_file_prompt = f"""
+<purpose>
+    Select a CSV file from the available files based on the user's prompt.
+</purpose>
+
+<instructions>
+    <instruction>Based on the user's prompt and the list of available CSV files, infer which file the user wants to use for the chart.</instruction>
+    <instruction>If no file matches, return an empty string for 'file'.</instruction>
+</instructions>
+
+<available-csv-files>
+    {', '.join(csv_files)}
+</available-csv-files>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+    """
+
+    # Call the LLM to select the file
+    file_selection_response = structured_output_prompt(
+        select_file_prompt,
+        FileReadResponse,
+        llm_model=model_name_to_id[ModelName.fast_model],
+    )
+
+    if not file_selection_response.file:
+        return {
+            "status": "error",
+            "message": "No matching CSV file found for the given prompt.",
+        }
+
+    file_path = os.path.join(scratch_pad_dir, file_selection_response.file)
+
+    if not os.path.exists(file_path):
+        return {
+            "status": "error",
+            "message": f"CSV file '{file_selection_response.file}' does not exist in '{scratch_pad_dir}'.",
+        }
+
+    # Step 2: Read and analyze the CSV file
+    try:
+        df = pd.read_csv(file_path)
+        csv_preview = df.head(10).to_string(index=False)
+        csv_info = df.info(verbose=True, memory_usage="deep", buf=io.StringIO())
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to read or analyze the CSV file: {str(e)}",
+        }
+
+    # Step 3: Generate Python code for the chart
+    memory_content = memory_manager.get_xml_for_prompt(["*"])
+
+    code_generation_prompt = f"""
+<purpose>
+    Generate Python code using matplotlib to create a {chart_type} chart based on the user's prompt, the selected CSV file, and the memory content.
+</purpose>
+
+<instructions>
+    <instruction>Use pandas to read the CSV file located at '{file_path}'.</instruction>
+    <instruction>Generate the Python code to create a {chart_type} chart according to the user's prompt.</instruction>
+    <instruction>The code should be complete and runnable, starting with necessary imports.</instruction>
+    <instruction>Do not include any additional commentary or markdown formatting.</instruction>
+    <instruction>Base the code off the CSV file content provided in the preview and info sections.</instruction>
+    <instruction>Consider the columns, data types, and statistics when creating the chart.</instruction>
+    <instruction>Ensure the chart is properly labeled and formatted for clarity.</instruction>
+    <instruction>Do not wrap in backticks or triple quotes. We're going to execute this code immediately so it must be executable python code.</instruction>
+    <instruction>Your code should save an image back into the scratchpad directory.</instruction>
+    <instruction>After you save the image print out the file path so we can find it.</instruction>
+</instructions>
+
+<csv-preview>
+{csv_preview}
+</csv-preview>
+
+<csv-info>
+{csv_info}
+</csv-info>
+
+<user-prompt>
+    {prompt}
+</user-prompt>
+
+{memory_content}
+    """
+
+    # Call the LLM to generate the Python code
+    response = chat_prompt(
+        code_generation_prompt, model_name_to_id[ModelName.reasoning_model]
+    )
+
+    response = parse_markdown_backticks(response)
+
+    # Save the generated code to a file
+    chart_code_file_name = (
+        f"{os.path.splitext(file_selection_response.file)[0]}_{chart_type}_chart.py"
+    )
+    chart_code_file_path = os.path.join(scratch_pad_dir, chart_code_file_name)
+
+    with open(chart_code_file_path, "w") as f:
+        f.write(response)
+
+    # now execute the code
+    output = run_uv_script(response)
+
+    return {
+        "status": "success",
+        "message": f"Python code for {chart_type} chart generated and saved to '{chart_code_file_name}'. ",
+        "file_name": chart_code_file_name,
+        "execution_output": output,
+    }
+
+
 # Map function names to their corresponding functions
 function_map = {
     "get_current_time": get_current_time,
@@ -1453,6 +1608,7 @@ function_map = {
     "generate_sql_save_to_file": generate_sql_save_to_file,
     "generate_sql_and_execute": generate_sql_and_execute,
     "run_sql_file": run_sql_file,
+    "create_python_chart": create_python_chart,
 }
 
 # Tools array for session initialization
@@ -1465,6 +1621,26 @@ tools = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+    },
+    {
+        "type": "function",
+        "name": "create_python_chart",
+        "description": "Generates Python code to create a matplotlib chart based on the user's prompt and selected CSV file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The user's prompt describing the chart to create.",
+                },
+                "chart_type": {
+                    "type": "string",
+                    "enum": ["histogram", "pie", "scatter", "bar", "line"],
+                    "description": "The type of chart to create.",
+                },
+            },
+            "required": ["prompt", "chart_type"],
         },
     },
     {

@@ -98,7 +98,10 @@ with open(personalization_file, "r") as f:
 ai_assistant_name = personalization.get("ai_assistant_name", "Assistant")
 human_name = personalization.get("human_name", "User")
 
-SESSION_INSTRUCTIONS = f"You are {ai_assistant_name}, a helpful assistant. Respond concisely to {human_name}."
+SESSION_INSTRUCTIONS = (
+    f"You are {ai_assistant_name}, a helpful assistant. Respond to {human_name}. "
+    f"{personalization.get('system_message_suffix', '')}"
+)
 PREFIX_PADDING_MS = 300
 SILENCE_THRESHOLD = 0.5
 SILENCE_DURATION_MS = 700
