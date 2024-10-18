@@ -123,6 +123,10 @@ Tools are functions defined in `modules/tools.py` that extend the assistant's ca
 - Let tools run in parallel.
 - Fix audio randomly cutting out near the end.
 
+## Mock Database (sqlite and duckdb)
+- Reset duckdb `rm db/mock_duck.duckdb && duckdb db/mock_duck.duckdb < db/mock_data_for_duckdb.sql`
+- Reset sqlite `rm db/mock_sqlite.db && sqlite3 db/mock_sqlite.db < db/mock_data_for_sqlite.sql`
+
 ## Resources
 - https://www.firecrawl.dev/
 - https://youtu.be/vN0t-kcPOXo
