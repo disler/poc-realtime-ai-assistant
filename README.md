@@ -1,11 +1,13 @@
 # POC Python Realtime API o1 assistant
 > This is a proof of concept for using the OpenAI's [Realtime API](https://openai.com/index/introducing-the-realtime-api/) to chain tools, call o1-preview & o1-mini, [structure output](https://openai.com/index/introducing-structured-outputs-in-the-api/) responses, and glimpse into the future of **AI assistant powered engineering**.
 >
+> See video where we [use SQL methods and discuss engineering with AI in 2025](https://youtu.be/4SnvMieJiuw)
+>
 > See video where we [use and discuss this POC](https://youtu.be/vN0t-kcPOXo)
 >
 > See video where we [add memory and tools to the assistant](https://youtu.be/090oR--s__8)
 >
-> This codebase is a v0.2, poc. It's buggy, but contains the core ideas for realtime personal ai assistants & AI Agents.
+> This codebase is a v0.3, poc. It's buggy, but contains the core ideas for realtime personal ai assistants & AI Agents.
 
 <img src="./images/engineers-ai-assistant.png" alt="engineers-ai-assistant" style="max-width: 800px;">
 
@@ -31,7 +33,7 @@ You can customize the behavior of the assistant by modifying the `personalizatio
 - `human_name`: The name of the human user.
 - `sql_dialect`: The SQL dialect to use for database operations. Supported options are:
   - `sqlite`: For SQLite databases
-  - `postgres`: For PostgreSQL databases
+  - `postgres`: For PostgreSQL databases (untested)
   - `duckdb`: For DuckDB databases
 - `system_message_suffix`: A string that will be appended to the end of the system instructions for the AI assistant.
 
@@ -69,6 +71,7 @@ Here are some voice commands you can try with the assistant:
 - "Hey Ada, generate a diagram outlining the architecture of a minimal tiktok clone."
 - "Hey Ada, check if `example.py` is runnable."
 - "Hey Ada, run `example.py`."
+- "Hey Ada, load the tables into memory.|Ada ingest active memory.|Ada select all Users"
 
 ### CLI Text Prompts
 You can also pass text prompts to the assistant via the CLI.
@@ -90,6 +93,7 @@ Use '|' to separate prompts to chain commands.
 - `uv run main --prompts "Generate a diagram outlining the architecture of a minimal tiktok clone"`
 - `uv run main --prompts "Check if example.py is runnable code"`
 - `uv run main --prompts "Run example.py"`
+- `uv run main --prompts "Hey Ada, load the tables into memory|Ada ingest active memory|Ada execute sql select all Users and save to csv file"`
 
 ## Code Breakdown
 
@@ -99,14 +103,20 @@ The codebase is organized within the `src/realtime_api_async_python` directory. 
 ### Important Files and Directories
 - **`main.py`**: This is the entry point of the application. It sets up the WebSocket connection, handles audio input/output, and manages the interaction between the user and the AI assistant.
 - **`modules/` Directory**: Contains various modules handling different functionalities of the assistant:
-  - `audio.py`: Handles audio playback.
-  - `async_microphone.py`: Manages asynchronous audio input.
-  - `llm.py`: Interfaces with language models.
-  - `tools.py`: Contains definitions of tools that the assistant can use.
-  - `utils.py`: Provides utility functions used across the application.
-  - `memory_management.py`: Manages the assistant's memory.
-- **`tests/` Directory**: Contains minimal tests for the application's modules.
+  - `audio.py`: Handles audio playback, including adding silence padding to prevent audio clipping.
+  - `async_microphone.py`: Manages asynchronous audio input from the microphone.
+  - `database.py`: Provides database interfaces for different SQL dialects (e.g., SQLite, DuckDB, PostgreSQL) and executes SQL queries.
+  - `llm.py`: Interfaces with language models, including functions for structured output parsing and chat prompts.
+  - `logging.py`: Configures logging for the application using Rich for formatted and colorful logs.
+  - `memory_management.py`: Manages the assistant's memory with operations to create, read, update, and delete memory entries.
+  - `mermaid.py`: Generates Mermaid diagrams based on prompts and renders them as images.
+  - `tools.py`: Contains definitions of tools and functions that the assistant can use to perform various actions.
+  - `utils.py`: Provides utility functions used across the application, such as timing decorators, model enumerations, audio configurations, and helper methods.
+- **`tests/` Directory**: Contains tests for the application's modules, providing a starting point for testing the application's components.
 - **`active_memory.json`**: Stores the assistant's active memory state, allowing it to persist information between interactions.
+- **`personalization.json`**: Contains configuration settings used to personalize the assistant's behavior.
+- **`db/` Directory**: Holds mock database files and SQL scripts for testing database functionalities.
+- **`scratchpad/` Directory**: Used for temporary file storage and manipulation by the assistant.
 
 ### Memory Management
 The assistant uses the `MemoryManager` class in `memory_management.py` to handle memory operations. This class provides methods to create, read, update, delete, and list memory entries. Memory is stored persistently in `active_memory.json`, enabling the assistant to access and manipulate memory across sessions.
@@ -128,9 +138,10 @@ Tools are functions defined in `modules/tools.py` that extend the assistant's ca
 - Reset sqlite `rm db/mock_sqlite.db && sqlite3 db/mock_sqlite.db < db/mock_data_for_sqlite.sql`
 
 ## Resources
-- https://www.firecrawl.dev/
+- https://youtu.be/4SnvMieJiuw
 - https://youtu.be/vN0t-kcPOXo
 - https://youtu.be/090oR--s__8
+- https://www.firecrawl.dev/
 - https://openai.com/index/introducing-the-realtime-api/
 - https://openai.com/index/introducing-structured-outputs-in-the-api/
 - https://platform.openai.com/docs/guides/realtime/events
